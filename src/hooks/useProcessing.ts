@@ -3,6 +3,7 @@ import { useEffect, useMemo } from 'react'
 import { cancelProcessingTask, ensureProcessingRunner } from '@/lib/processing-runner'
 import { useProcessingStore } from '@/stores/processing.store'
 import { useSettingsStore } from '@/stores/settings.store'
+import type { EncodeSettings } from '@/types/encoding'
 import type { InterpolateParams, UpscaleParams } from '@/types/models'
 import type { ProcessingTask } from '@/types/pipeline'
 
@@ -48,6 +49,7 @@ const createBaseTask = (
   type: 'upscale' | 'interpolate',
   inputPath: string,
   params: UpscaleParams | InterpolateParams,
+  encodeSettings: EncodeSettings,
   outputDirectory: string,
 ): ProcessingTask => {
   return {
@@ -63,6 +65,7 @@ const createBaseTask = (
     startTime: null,
     endTime: null,
     error: null,
+    encodeSettings,
     params,
   }
 }
@@ -82,6 +85,7 @@ export function useProcessing(): {
 
   const upscaleParams = useSettingsStore((state) => state.upscaleParams)
   const interpolateParams = useSettingsStore((state) => state.interpolateParams)
+  const encodeSettings = useSettingsStore((state) => state.encodeSettings)
   const outputDirectory = useSettingsStore((state) => state.outputDirectory)
 
   useEffect(() => {
@@ -96,11 +100,11 @@ export function useProcessing(): {
   }, [activeTaskId, tasks])
 
   const addUpscaleTask = (inputPath: string): void => {
-    addTask(createBaseTask('upscale', inputPath, upscaleParams, outputDirectory))
+    addTask(createBaseTask('upscale', inputPath, upscaleParams, encodeSettings, outputDirectory))
   }
 
   const addInterpolateTask = (inputPath: string): void => {
-    addTask(createBaseTask('interpolate', inputPath, interpolateParams, outputDirectory))
+    addTask(createBaseTask('interpolate', inputPath, interpolateParams, encodeSettings, outputDirectory))
   }
 
   const cancelTask = (id: string): void => {

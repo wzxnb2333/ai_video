@@ -11,7 +11,67 @@
     "core:window:allow-toggle-maximize",
     "core:window:allow-start-dragging",
     "shell:allow-open",
-    "shell:allow-execute",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        { "name": "ffmpeg-models-ffmpeg", "cmd": "$RESOURCE/models/ffmpeg/ffmpeg", "args": true },
+        { "name": "ffmpeg-models-ffmpeg-exe", "cmd": "$RESOURCE/models/ffmpeg/ffmpeg.exe", "args": true },
+        { "name": "ffmpeg-resources-models-ffmpeg", "cmd": "$RESOURCE/resources/models/ffmpeg/ffmpeg", "args": true },
+        { "name": "ffmpeg-resources-models-ffmpeg-exe", "cmd": "$RESOURCE/resources/models/ffmpeg/ffmpeg.exe", "args": true },
+        { "name": "ffmpeg-models-flat", "cmd": "$RESOURCE/models/ffmpeg", "args": true },
+        { "name": "ffmpeg-models-flat-exe", "cmd": "$RESOURCE/models/ffmpeg.exe", "args": true },
+        { "name": "ffmpeg-resources-models-flat", "cmd": "$RESOURCE/resources/models/ffmpeg", "args": true },
+        { "name": "ffmpeg-resources-models-flat-exe", "cmd": "$RESOURCE/resources/models/ffmpeg.exe", "args": true },
+        { "name": "ffprobe-models-ffmpeg", "cmd": "$RESOURCE/models/ffmpeg/ffprobe", "args": true },
+        { "name": "ffprobe-models-ffmpeg-exe", "cmd": "$RESOURCE/models/ffmpeg/ffprobe.exe", "args": true },
+        { "name": "ffprobe-resources-models-ffmpeg", "cmd": "$RESOURCE/resources/models/ffmpeg/ffprobe", "args": true },
+        { "name": "ffprobe-resources-models-ffmpeg-exe", "cmd": "$RESOURCE/resources/models/ffmpeg/ffprobe.exe", "args": true },
+        { "name": "ffprobe-models-flat", "cmd": "$RESOURCE/models/ffprobe", "args": true },
+        { "name": "ffprobe-models-flat-exe", "cmd": "$RESOURCE/models/ffprobe.exe", "args": true },
+        { "name": "ffprobe-resources-models-flat", "cmd": "$RESOURCE/resources/models/ffprobe", "args": true },
+        { "name": "ffprobe-resources-models-flat-exe", "cmd": "$RESOURCE/resources/models/ffprobe.exe", "args": true },
+        {
+          "name": "waifu2x-models-nested",
+          "cmd": "$RESOURCE/models/waifu2x-ncnn-vulkan/waifu2x-ncnn-vulkan",
+          "args": true
+        },
+        {
+          "name": "waifu2x-models-nested-exe",
+          "cmd": "$RESOURCE/models/waifu2x-ncnn-vulkan/waifu2x-ncnn-vulkan.exe",
+          "args": true
+        },
+        {
+          "name": "waifu2x-resources-models-nested",
+          "cmd": "$RESOURCE/resources/models/waifu2x-ncnn-vulkan/waifu2x-ncnn-vulkan",
+          "args": true
+        },
+        {
+          "name": "waifu2x-resources-models-nested-exe",
+          "cmd": "$RESOURCE/resources/models/waifu2x-ncnn-vulkan/waifu2x-ncnn-vulkan.exe",
+          "args": true
+        },
+        { "name": "waifu2x-models-flat", "cmd": "$RESOURCE/models/waifu2x-ncnn-vulkan", "args": true },
+        { "name": "waifu2x-models-flat-exe", "cmd": "$RESOURCE/models/waifu2x-ncnn-vulkan.exe", "args": true },
+        { "name": "waifu2x-resources-models-flat", "cmd": "$RESOURCE/resources/models/waifu2x-ncnn-vulkan", "args": true },
+        { "name": "waifu2x-resources-models-flat-exe", "cmd": "$RESOURCE/resources/models/waifu2x-ncnn-vulkan.exe", "args": true },
+        { "name": "rife-models-nested", "cmd": "$RESOURCE/models/rife-ncnn-vulkan/rife-ncnn-vulkan", "args": true },
+        { "name": "rife-models-nested-exe", "cmd": "$RESOURCE/models/rife-ncnn-vulkan/rife-ncnn-vulkan.exe", "args": true },
+        {
+          "name": "rife-resources-models-nested",
+          "cmd": "$RESOURCE/resources/models/rife-ncnn-vulkan/rife-ncnn-vulkan",
+          "args": true
+        },
+        {
+          "name": "rife-resources-models-nested-exe",
+          "cmd": "$RESOURCE/resources/models/rife-ncnn-vulkan/rife-ncnn-vulkan.exe",
+          "args": true
+        },
+        { "name": "rife-models-flat", "cmd": "$RESOURCE/models/rife-ncnn-vulkan", "args": true },
+        { "name": "rife-models-flat-exe", "cmd": "$RESOURCE/models/rife-ncnn-vulkan.exe", "args": true },
+        { "name": "rife-resources-models-flat", "cmd": "$RESOURCE/resources/models/rife-ncnn-vulkan", "args": true },
+        { "name": "rife-resources-models-flat-exe", "cmd": "$RESOURCE/resources/models/rife-ncnn-vulkan.exe", "args": true }
+      ]
+    },
     "shell:allow-stdin-write",
     "shell:allow-kill",
     "dialog:allow-open",
@@ -37,6 +97,66 @@
         { "path": "$TEMP/**" }
       ]
     },
-    "shell:allow-spawn"
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        { "name": "ffmpeg-models-ffmpeg", "cmd": "$RESOURCE/models/ffmpeg/ffmpeg", "args": true },
+        { "name": "ffmpeg-models-ffmpeg-exe", "cmd": "$RESOURCE/models/ffmpeg/ffmpeg.exe", "args": true },
+        { "name": "ffmpeg-resources-models-ffmpeg", "cmd": "$RESOURCE/resources/models/ffmpeg/ffmpeg", "args": true },
+        { "name": "ffmpeg-resources-models-ffmpeg-exe", "cmd": "$RESOURCE/resources/models/ffmpeg/ffmpeg.exe", "args": true },
+        { "name": "ffmpeg-models-flat", "cmd": "$RESOURCE/models/ffmpeg", "args": true },
+        { "name": "ffmpeg-models-flat-exe", "cmd": "$RESOURCE/models/ffmpeg.exe", "args": true },
+        { "name": "ffmpeg-resources-models-flat", "cmd": "$RESOURCE/resources/models/ffmpeg", "args": true },
+        { "name": "ffmpeg-resources-models-flat-exe", "cmd": "$RESOURCE/resources/models/ffmpeg.exe", "args": true },
+        { "name": "ffprobe-models-ffmpeg", "cmd": "$RESOURCE/models/ffmpeg/ffprobe", "args": true },
+        { "name": "ffprobe-models-ffmpeg-exe", "cmd": "$RESOURCE/models/ffmpeg/ffprobe.exe", "args": true },
+        { "name": "ffprobe-resources-models-ffmpeg", "cmd": "$RESOURCE/resources/models/ffmpeg/ffprobe", "args": true },
+        { "name": "ffprobe-resources-models-ffmpeg-exe", "cmd": "$RESOURCE/resources/models/ffmpeg/ffprobe.exe", "args": true },
+        { "name": "ffprobe-models-flat", "cmd": "$RESOURCE/models/ffprobe", "args": true },
+        { "name": "ffprobe-models-flat-exe", "cmd": "$RESOURCE/models/ffprobe.exe", "args": true },
+        { "name": "ffprobe-resources-models-flat", "cmd": "$RESOURCE/resources/models/ffprobe", "args": true },
+        { "name": "ffprobe-resources-models-flat-exe", "cmd": "$RESOURCE/resources/models/ffprobe.exe", "args": true },
+        {
+          "name": "waifu2x-models-nested",
+          "cmd": "$RESOURCE/models/waifu2x-ncnn-vulkan/waifu2x-ncnn-vulkan",
+          "args": true
+        },
+        {
+          "name": "waifu2x-models-nested-exe",
+          "cmd": "$RESOURCE/models/waifu2x-ncnn-vulkan/waifu2x-ncnn-vulkan.exe",
+          "args": true
+        },
+        {
+          "name": "waifu2x-resources-models-nested",
+          "cmd": "$RESOURCE/resources/models/waifu2x-ncnn-vulkan/waifu2x-ncnn-vulkan",
+          "args": true
+        },
+        {
+          "name": "waifu2x-resources-models-nested-exe",
+          "cmd": "$RESOURCE/resources/models/waifu2x-ncnn-vulkan/waifu2x-ncnn-vulkan.exe",
+          "args": true
+        },
+        { "name": "waifu2x-models-flat", "cmd": "$RESOURCE/models/waifu2x-ncnn-vulkan", "args": true },
+        { "name": "waifu2x-models-flat-exe", "cmd": "$RESOURCE/models/waifu2x-ncnn-vulkan.exe", "args": true },
+        { "name": "waifu2x-resources-models-flat", "cmd": "$RESOURCE/resources/models/waifu2x-ncnn-vulkan", "args": true },
+        { "name": "waifu2x-resources-models-flat-exe", "cmd": "$RESOURCE/resources/models/waifu2x-ncnn-vulkan.exe", "args": true },
+        { "name": "rife-models-nested", "cmd": "$RESOURCE/models/rife-ncnn-vulkan/rife-ncnn-vulkan", "args": true },
+        { "name": "rife-models-nested-exe", "cmd": "$RESOURCE/models/rife-ncnn-vulkan/rife-ncnn-vulkan.exe", "args": true },
+        {
+          "name": "rife-resources-models-nested",
+          "cmd": "$RESOURCE/resources/models/rife-ncnn-vulkan/rife-ncnn-vulkan",
+          "args": true
+        },
+        {
+          "name": "rife-resources-models-nested-exe",
+          "cmd": "$RESOURCE/resources/models/rife-ncnn-vulkan/rife-ncnn-vulkan.exe",
+          "args": true
+        },
+        { "name": "rife-models-flat", "cmd": "$RESOURCE/models/rife-ncnn-vulkan", "args": true },
+        { "name": "rife-models-flat-exe", "cmd": "$RESOURCE/models/rife-ncnn-vulkan.exe", "args": true },
+        { "name": "rife-resources-models-flat", "cmd": "$RESOURCE/resources/models/rife-ncnn-vulkan", "args": true },
+        { "name": "rife-resources-models-flat-exe", "cmd": "$RESOURCE/resources/models/rife-ncnn-vulkan.exe", "args": true }
+      ]
+    }
   ]
 }

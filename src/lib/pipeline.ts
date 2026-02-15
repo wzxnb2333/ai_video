@@ -153,7 +153,7 @@ export class ProcessingPipeline {
 
       const outputFps = isInterpolateTask(task) ? sourceInfo.fps * task.params.multiplier : sourceInfo.fps
 
-      await encodeVideo(processedDir, task.outputPath, outputFps, task.inputPath, (current, total) => {
+      await encodeVideo(processedDir, task.outputPath, outputFps, task.inputPath, task.encodeSettings, (current, total) => {
         const boundedTotal = Math.max(1, total)
         const stageRatio = Math.min(current / boundedTotal, 1)
         const overallProgress = 85 + stageRatio * 15

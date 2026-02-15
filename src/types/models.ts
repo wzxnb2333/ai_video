@@ -2,6 +2,7 @@ export interface UpscaleParams {
   scale: 2 | 3 | 4
   denoiseLevel: 0 | 1 | 2 | 3
   tileSize: number
+  threadSpec: string
   gpuId: number
   model: string
   format: 'png' | 'jpg' | 'webp'
@@ -13,6 +14,7 @@ export interface InterpolateParams {
   model: string
   gpuId: number
   uhd: boolean
+  threadSpec: string
   customArgs: string[]
 }
 
@@ -35,8 +37,9 @@ export interface InterpolateModelConfig {
 export const DEFAULT_UPSCALE_PARAMS: UpscaleParams = {
   scale: 2,
   denoiseLevel: 1,
-  tileSize: 256,
-  gpuId: 0,
+  tileSize: 0,
+  threadSpec: '',
+  gpuId: -1,
   model: 'models-cunet',
   format: 'png',
   customArgs: [],
@@ -45,8 +48,9 @@ export const DEFAULT_UPSCALE_PARAMS: UpscaleParams = {
 export const DEFAULT_INTERPOLATE_PARAMS: InterpolateParams = {
   multiplier: 2,
   model: 'rife-v4.6',
-  gpuId: 0,
+  gpuId: -1,
   uhd: false,
+  threadSpec: '4:8:4',
   customArgs: [],
 }
 

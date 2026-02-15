@@ -2,12 +2,50 @@ import { resolveResource } from '@tauri-apps/api/path'
 import { exists, mkdir, readDir } from '@tauri-apps/plugin-fs'
 import { Command } from '@tauri-apps/plugin-shell'
 
-import { getResourcePath } from '@/lib/ffmpeg'
+import { getShellCommandName } from '@/lib/ffmpeg'
+import { getRecommendedRifeRuntime } from '@/lib/gpu'
 import type { InterpolateParams } from '@/types/models'
 
 type InterpolateProgressCallback = (current: number, total: number) => void
 
 let activeInterpolateChild: { kill: () => Promise<void> } | null = null
+
+function isPathExists(path: string): Promise<boolean> {
+  return exists(path).catch(() => false)
+}
+
+function toDevWorkspaceResourcePath(resolvedResourcePath: string, resourceRelativePath: string): string | null {
+  const windowsMarker = '\\src-tauri\\target\\'
+  const posixMarker = '/src-tauri/target/'
+  const windowsIndex = resolvedResourcePath.indexOf(windowsMarker)
+  const posixIndex = resolvedResourcePath.indexOf(posixMarker)
+
+  if (windowsIndex >= 0) {
+    const workspaceRoot = resolvedResourcePath.slice(0, windowsIndex)
+    const relative = resourceRelativePath.replace(/\//g, '\\')
+    return `${workspaceRoot}\\resources\\${relative}`
+  }
+
+  const markerIndex = posixIndex
+  if (markerIndex < 0) {
+    return null
+  }
+
+  const workspaceRoot = resolvedResourcePath.slice(0, markerIndex)
+  return `${workspaceRoot}/resources/${resourceRelativePath}`
+}
+
+function getGpuArgs(gpuId: number): string[] {
+  const normalized = Number.isFinite(gpuId) ? Math.trunc(gpuId) : 0
+  if (normalized < 0) {
+    return []
+  }
+  return ['-g', `${normalized}`]
+}
+
+function hasArg(customArgs: string[], flag: string): boolean {
+  return customArgs.some((arg) => arg.trim() === flag)
+}
 
 function parseProgressLine(line: string): { current: number; total: number } | null {
   const percentMatch = line.match(/(\d+(?:\.\d+)?)%/)
@@ -29,16 +67,29 @@ function parseProgressLine(line: string): { current: number; total: number } | n
 }
 
 async function resolveModelDirectory(modelName: string): Promise<string> {
-  const candidates = [`models/rife-ncnn-vulkan/${modelName}`, `models/${modelName}`]
+  const candidates = [
+    `models/rife-ncnn-vulkan/${modelName}`,
+    `resources/models/rife-ncnn-vulkan/${modelName}`,
+    `models/${modelName}`,
+    `resources/models/${modelName}`,
+  ]
+  const checked: string[] = []
 
   for (const candidate of candidates) {
     const resolved = await resolveResource(candidate)
-    if (await exists(resolved)) {
+    checked.push(resolved)
+    if (await isPathExists(resolved)) {
       return resolved
+    }
+
+    const devWorkspacePath = toDevWorkspaceResourcePath(resolved, candidate)
+    if (devWorkspacePath) {
+      checked.push(devWorkspacePath)
+      return devWorkspacePath
     }
   }
 
-  throw new Error(`Interpolate model not found: ${modelName}`)
+  throw new Error(`Interpolate model not found: ${modelName}. Checked: ${checked.join(', ')}`)
 }
 
 async function countInputFrames(inputDir: string): Promise<number> {
@@ -63,10 +114,15 @@ export async function runInterpolate(
     await mkdir(outputDir, { recursive: true })
   }
 
-  const binaryPath = await getResourcePath('rife-ncnn-vulkan')
+  const recommendation = await getRecommendedRifeRuntime(params.gpuId, { uhd: params.uhd }).catch(() => ({
+    threadSpec: params.uhd ? '2:3:2' : '3:6:4',
+  }))
   const modelPath = await resolveModelDirectory(params.model)
   const inputFrames = await countInputFrames(inputDir)
   const targetFrames = inputFrames > 1 ? (inputFrames - 1) * params.multiplier + 1 : inputFrames
+  const manualThreadSpec = params.threadSpec.trim()
+  const finalThreadSpec = manualThreadSpec || recommendation.threadSpec
+  const threadArgs = hasArg(params.customArgs, '-j') || !finalThreadSpec ? [] : ['-j', finalThreadSpec]
 
   const args = [
     '-i',
@@ -75,10 +131,12 @@ export async function runInterpolate(
     outputDir,
     '-m',
     modelPath,
-    '-g',
-    `${params.gpuId}`,
+    ...getGpuArgs(params.gpuId),
     '-n',
     `${Math.max(1, targetFrames)}`,
+    '-f',
+    'frame_%08d.png',
+    ...threadArgs,
     ...params.customArgs,
   ]
 
@@ -86,7 +144,8 @@ export async function runInterpolate(
     args.push('-u')
   }
 
-  const command = Command.create(binaryPath, args)
+  const commandName = await getShellCommandName('rife-ncnn-vulkan')
+  const command = Command.create(commandName, args)
 
   const expectedTotal = targetFrames > 0 ? targetFrames : 100
 

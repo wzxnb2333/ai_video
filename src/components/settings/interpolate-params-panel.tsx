@@ -17,8 +17,17 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { GpuCheckPanel } from '@/components/settings/gpu-check-panel'
 import { INTERPOLATE_MODELS } from '@/types/models'
 import { useSettingsStore } from '@/stores/settings.store'
+
+const THREAD_PRESET_OPTIONS = [
+  { id: 'preset-484', label: '高性能 4:8:4', threadSpec: '4:8:4' },
+  { id: 'preset-464', label: '均衡 4:6:4', threadSpec: '4:6:4' },
+  { id: 'preset-364', label: '稳定 3:6:4', threadSpec: '3:6:4' },
+  { id: 'preset-232', label: 'UHD 2:3:2', threadSpec: '2:3:2' },
+  { id: 'preset-auto', label: '自动（按显存）', threadSpec: '' },
+] as const
 
 export function InterpolateParamsPanel(): React.JSX.Element {
   const params = useSettingsStore((state) => state.interpolateParams)
@@ -26,6 +35,8 @@ export function InterpolateParamsPanel(): React.JSX.Element {
 
   const selectedModel =
     INTERPOLATE_MODELS.find((model) => model.name === params.model) ?? INTERPOLATE_MODELS[0]
+  const selectedThreadPresetId =
+    THREAD_PRESET_OPTIONS.find((option) => option.threadSpec === params.threadSpec)?.id ?? 'preset-custom'
 
   return (
     <Card className="border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950/75 shadow-[0_18px_45px_-30px_rgba(34,197,94,0.42)]">
@@ -108,11 +119,12 @@ export function InterpolateParamsPanel(): React.JSX.Element {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="interpolate-gpu">GPU 编号</Label>
+          <Label htmlFor="interpolate-gpu">GPU 编号（-1 为自动）</Label>
           <Input
             id="interpolate-gpu"
             type="number"
-            min={0}
+            min={-1}
+            step={1}
             value={params.gpuId}
             className="border-zinc-300 bg-zinc-50 text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
             onChange={(event) => {
@@ -120,6 +132,54 @@ export function InterpolateParamsPanel(): React.JSX.Element {
             }}
           />
         </div>
+
+        <div className="space-y-2">
+          <Label>补帧线程预设</Label>
+          <Select
+            value={selectedThreadPresetId}
+            onValueChange={(value) => {
+              if (value === 'preset-custom') {
+                return
+              }
+              const preset = THREAD_PRESET_OPTIONS.find((option) => option.id === value)
+              if (!preset) {
+                return
+              }
+              setInterpolateParams({ threadSpec: preset.threadSpec })
+            }}
+          >
+            <SelectTrigger className="border-zinc-300 bg-zinc-50 text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {THREAD_PRESET_OPTIONS.map((option) => (
+                <SelectItem key={option.id} value={option.id}>
+                  {option.label}
+                </SelectItem>
+              ))}
+              <SelectItem value="preset-custom">自定义（保持当前）</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="interpolate-thread-spec">补帧线程参数（留空自动）</Label>
+          <Input
+            id="interpolate-thread-spec"
+            type="text"
+            value={params.threadSpec}
+            placeholder="示例: 4:6:4"
+            className="border-zinc-300 bg-zinc-50 text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+            onChange={(event) => {
+              setInterpolateParams({ threadSpec: event.target.value })
+            }}
+          />
+          <p className="text-xs text-zinc-600 dark:text-zinc-400">
+            对应 rife 的 -j load:proc:save，建议先用自动，再尝试 4:6:4 或 4:8:4。
+          </p>
+        </div>
+
+        <GpuCheckPanel />
       </CardContent>
     </Card>
   )

@@ -2,12 +2,50 @@ import { resolveResource } from '@tauri-apps/api/path'
 import { exists, mkdir } from '@tauri-apps/plugin-fs'
 import { Command } from '@tauri-apps/plugin-shell'
 
-import { getResourcePath } from '@/lib/ffmpeg'
+import { getShellCommandName } from '@/lib/ffmpeg'
+import { getRecommendedNcnnRuntime } from '@/lib/gpu'
 import type { UpscaleParams } from '@/types/models'
 
 type UpscaleProgressCallback = (current: number, total: number) => void
 
 let activeUpscaleChild: { kill: () => Promise<void> } | null = null
+
+function isPathExists(path: string): Promise<boolean> {
+  return exists(path).catch(() => false)
+}
+
+function toDevWorkspaceResourcePath(resolvedResourcePath: string, resourceRelativePath: string): string | null {
+  const windowsMarker = '\\src-tauri\\target\\'
+  const posixMarker = '/src-tauri/target/'
+  const windowsIndex = resolvedResourcePath.indexOf(windowsMarker)
+  const posixIndex = resolvedResourcePath.indexOf(posixMarker)
+
+  if (windowsIndex >= 0) {
+    const workspaceRoot = resolvedResourcePath.slice(0, windowsIndex)
+    const relative = resourceRelativePath.replace(/\//g, '\\')
+    return `${workspaceRoot}\\resources\\${relative}`
+  }
+
+  const markerIndex = posixIndex
+  if (markerIndex < 0) {
+    return null
+  }
+
+  const workspaceRoot = resolvedResourcePath.slice(0, markerIndex)
+  return `${workspaceRoot}/resources/${resourceRelativePath}`
+}
+
+function getGpuArgs(gpuId: number): string[] {
+  const normalized = Number.isFinite(gpuId) ? Math.trunc(gpuId) : 0
+  if (normalized < 0) {
+    return []
+  }
+  return ['-g', `${normalized}`]
+}
+
+function hasArg(customArgs: string[], flag: string): boolean {
+  return customArgs.some((arg) => arg.trim() === flag)
+}
 
 function parseProgressLine(line: string): { current: number; total: number } | null {
   const percentMatch = line.match(/(\d+(?:\.\d+)?)%/)
@@ -29,20 +67,33 @@ function parseProgressLine(line: string): { current: number; total: number } | n
 }
 
 async function resolveModelDirectory(modelName: string): Promise<string> {
+  const normalizedModelName = modelName.replace(/^models-/, '')
   const candidates = [
     `models/waifu2x-ncnn-vulkan/${modelName}`,
+    `resources/models/waifu2x-ncnn-vulkan/${modelName}`,
     `models/${modelName}`,
-    `models/${modelName.replace(/^models-/, '')}`,
+    `resources/models/${modelName}`,
+    `models/${normalizedModelName}`,
+    `resources/models/${normalizedModelName}`,
   ]
+
+  const checked: string[] = []
 
   for (const candidate of candidates) {
     const resolved = await resolveResource(candidate)
-    if (await exists(resolved)) {
+    checked.push(resolved)
+    if (await isPathExists(resolved)) {
       return resolved
+    }
+
+    const devWorkspacePath = toDevWorkspaceResourcePath(resolved, candidate)
+    if (devWorkspacePath) {
+      checked.push(devWorkspacePath)
+      return devWorkspacePath
     }
   }
 
-  throw new Error(`Upscale model not found: ${modelName}`)
+  throw new Error(`Upscale model not found: ${modelName}. Checked: ${checked.join(', ')}`)
 }
 
 export async function cancelActiveUpscaleProcess(): Promise<void> {
@@ -62,8 +113,15 @@ export async function runUpscale(
     await mkdir(outputDir, { recursive: true })
   }
 
-  const binaryPath = await getResourcePath('waifu2x-ncnn-vulkan')
+  const recommendation = await getRecommendedNcnnRuntime(params.gpuId).catch(() => ({
+    tileSize: 256,
+    threadSpec: '1:2:2',
+  }))
   const modelPath = await resolveModelDirectory(params.model)
+  const tileSize = params.tileSize > 0 ? params.tileSize : recommendation.tileSize
+  const manualThreadSpec = params.threadSpec.trim()
+  const finalThreadSpec = manualThreadSpec || recommendation.threadSpec
+  const threadArgs = hasArg(params.customArgs, '-j') || !finalThreadSpec ? [] : ['-j', finalThreadSpec]
 
   const args = [
     '-i',
@@ -75,17 +133,18 @@ export async function runUpscale(
     '-s',
     `${params.scale}`,
     '-t',
-    `${params.tileSize}`,
-    '-g',
-    `${params.gpuId}`,
+    `${tileSize}`,
     '-m',
     modelPath,
     '-f',
     params.format,
+    ...getGpuArgs(params.gpuId),
+    ...threadArgs,
     ...params.customArgs,
   ]
 
-  const command = Command.create(binaryPath, args)
+  const commandName = await getShellCommandName('waifu2x-ncnn-vulkan')
+  const command = Command.create(commandName, args)
   command.stdout.on('data', (line) => {
     const parsed = parseProgressLine(line)
     if (parsed && onProgress) {

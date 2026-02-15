@@ -2,6 +2,7 @@ import { basename, resolveResource, sep } from '@tauri-apps/api/path'
 import { exists, mkdir, readDir } from '@tauri-apps/plugin-fs'
 import { Command } from '@tauri-apps/plugin-shell'
 
+import type { EncodeSettings } from '@/types/encoding'
 import type { VideoInfo } from '@/types/pipeline'
 
 type ProgressCallback = (current: number, total: number) => void
@@ -30,6 +31,56 @@ interface FfprobeOutput {
 let activeFfmpegChild: { kill: () => Promise<void> } | null = null
 
 const FRAME_REGEX = /frame=\s*(\d+)/
+
+interface ShellCommandCandidate {
+  commandName: string
+  resourcePath: string
+}
+
+type ShellBinaryName = 'ffmpeg' | 'ffprobe' | 'waifu2x-ncnn-vulkan' | 'rife-ncnn-vulkan'
+
+const SHELL_COMMAND_CANDIDATES: Record<ShellBinaryName, ShellCommandCandidate[]> = {
+  ffmpeg: [
+    { commandName: 'ffmpeg-models-ffmpeg', resourcePath: 'models/ffmpeg/ffmpeg' },
+    { commandName: 'ffmpeg-models-ffmpeg-exe', resourcePath: 'models/ffmpeg/ffmpeg.exe' },
+    { commandName: 'ffmpeg-resources-models-ffmpeg', resourcePath: 'resources/models/ffmpeg/ffmpeg' },
+    { commandName: 'ffmpeg-resources-models-ffmpeg-exe', resourcePath: 'resources/models/ffmpeg/ffmpeg.exe' },
+    { commandName: 'ffmpeg-models-flat', resourcePath: 'models/ffmpeg' },
+    { commandName: 'ffmpeg-models-flat-exe', resourcePath: 'models/ffmpeg.exe' },
+    { commandName: 'ffmpeg-resources-models-flat', resourcePath: 'resources/models/ffmpeg' },
+    { commandName: 'ffmpeg-resources-models-flat-exe', resourcePath: 'resources/models/ffmpeg.exe' },
+  ],
+  ffprobe: [
+    { commandName: 'ffprobe-models-ffmpeg', resourcePath: 'models/ffmpeg/ffprobe' },
+    { commandName: 'ffprobe-models-ffmpeg-exe', resourcePath: 'models/ffmpeg/ffprobe.exe' },
+    { commandName: 'ffprobe-resources-models-ffmpeg', resourcePath: 'resources/models/ffmpeg/ffprobe' },
+    { commandName: 'ffprobe-resources-models-ffmpeg-exe', resourcePath: 'resources/models/ffmpeg/ffprobe.exe' },
+    { commandName: 'ffprobe-models-flat', resourcePath: 'models/ffprobe' },
+    { commandName: 'ffprobe-models-flat-exe', resourcePath: 'models/ffprobe.exe' },
+    { commandName: 'ffprobe-resources-models-flat', resourcePath: 'resources/models/ffprobe' },
+    { commandName: 'ffprobe-resources-models-flat-exe', resourcePath: 'resources/models/ffprobe.exe' },
+  ],
+  'waifu2x-ncnn-vulkan': [
+    { commandName: 'waifu2x-models-nested', resourcePath: 'models/waifu2x-ncnn-vulkan/waifu2x-ncnn-vulkan' },
+    { commandName: 'waifu2x-models-nested-exe', resourcePath: 'models/waifu2x-ncnn-vulkan/waifu2x-ncnn-vulkan.exe' },
+    { commandName: 'waifu2x-resources-models-nested', resourcePath: 'resources/models/waifu2x-ncnn-vulkan/waifu2x-ncnn-vulkan' },
+    { commandName: 'waifu2x-resources-models-nested-exe', resourcePath: 'resources/models/waifu2x-ncnn-vulkan/waifu2x-ncnn-vulkan.exe' },
+    { commandName: 'waifu2x-models-flat', resourcePath: 'models/waifu2x-ncnn-vulkan' },
+    { commandName: 'waifu2x-models-flat-exe', resourcePath: 'models/waifu2x-ncnn-vulkan.exe' },
+    { commandName: 'waifu2x-resources-models-flat', resourcePath: 'resources/models/waifu2x-ncnn-vulkan' },
+    { commandName: 'waifu2x-resources-models-flat-exe', resourcePath: 'resources/models/waifu2x-ncnn-vulkan.exe' },
+  ],
+  'rife-ncnn-vulkan': [
+    { commandName: 'rife-models-nested', resourcePath: 'models/rife-ncnn-vulkan/rife-ncnn-vulkan' },
+    { commandName: 'rife-models-nested-exe', resourcePath: 'models/rife-ncnn-vulkan/rife-ncnn-vulkan.exe' },
+    { commandName: 'rife-resources-models-nested', resourcePath: 'resources/models/rife-ncnn-vulkan/rife-ncnn-vulkan' },
+    { commandName: 'rife-resources-models-nested-exe', resourcePath: 'resources/models/rife-ncnn-vulkan/rife-ncnn-vulkan.exe' },
+    { commandName: 'rife-models-flat', resourcePath: 'models/rife-ncnn-vulkan' },
+    { commandName: 'rife-models-flat-exe', resourcePath: 'models/rife-ncnn-vulkan.exe' },
+    { commandName: 'rife-resources-models-flat', resourcePath: 'resources/models/rife-ncnn-vulkan' },
+    { commandName: 'rife-resources-models-flat-exe', resourcePath: 'resources/models/rife-ncnn-vulkan.exe' },
+  ],
+}
 
 function parseFrameRate(rateText: string | undefined): number {
   if (!rateText || rateText === '0/0') {
@@ -75,21 +126,24 @@ function buildExecutableNames(binName: string): string[] {
 }
 
 function buildResourceCandidates(binName: string): string[] {
+  if (binName === 'ffmpeg' || binName === 'ffprobe' || binName === 'waifu2x-ncnn-vulkan' || binName === 'rife-ncnn-vulkan') {
+    return SHELL_COMMAND_CANDIDATES[binName].map((candidate) => candidate.resourcePath)
+  }
+
   const executables = buildExecutableNames(binName)
 
-  if (binName === 'ffmpeg' || binName === 'ffprobe' || binName === 'ffplay') {
-    return executables.flatMap((name) => [`models/ffmpeg/${name}`, `bin/${name}`])
+  if (binName === 'ffplay') {
+    return executables.flatMap((name) => [
+      `models/ffmpeg/${name}`,
+      `resources/models/ffmpeg/${name}`,
+      `models/${name}`,
+      `resources/models/${name}`,
+      `bin/${name}`,
+      `resources/bin/${name}`,
+    ])
   }
 
-  if (binName === 'waifu2x-ncnn-vulkan') {
-    return executables.flatMap((name) => [`models/waifu2x-ncnn-vulkan/${name}`, `bin/${name}`])
-  }
-
-  if (binName === 'rife-ncnn-vulkan') {
-    return executables.flatMap((name) => [`models/rife-ncnn-vulkan/${name}`, `bin/${name}`])
-  }
-
-  return executables.flatMap((name) => [`models/${name}`, `bin/${name}`])
+  return executables.flatMap((name) => [`models/${name}`, `resources/models/${name}`, `bin/${name}`, `resources/bin/${name}`])
 }
 
 async function resolveBinaryCandidate(binName: string): Promise<string> {
@@ -109,6 +163,24 @@ export async function getResourcePath(binName: string): Promise<string> {
   return resolveBinaryCandidate(binName)
 }
 
+function formatNotFoundMessage(binName: string, checked: string[]): string {
+  return `${binName} executable not found. Checked: ${checked.join(', ')}`
+}
+
+export async function getShellCommandName(binName: ShellBinaryName): Promise<string> {
+  const checked: string[] = []
+
+  for (const candidate of SHELL_COMMAND_CANDIDATES[binName]) {
+    const resolvedPath = await resolveResource(candidate.resourcePath)
+    checked.push(resolvedPath)
+    if (await exists(resolvedPath)) {
+      return candidate.commandName
+    }
+  }
+
+  throw new Error(formatNotFoundMessage(binName, checked))
+}
+
 async function ensureDirectory(path: string): Promise<void> {
   if (!(await exists(path))) {
     await mkdir(path, { recursive: true })
@@ -126,14 +198,18 @@ function splitOutputToLines(output: string): string[] {
   return output.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.length > 0)
 }
 
+function resolveVideoEncoder(settings: EncodeSettings): string {
+  return settings.useHardwareEncoding ? settings.hardwareEncoder : settings.softwareEncoder
+}
+
 async function countFramesFromDirectory(framesDir: string): Promise<number> {
   const entries = await readDir(framesDir)
   return entries.filter((entry) => entry.isFile && /\.(png|jpg|jpeg|webp)$/i.test(entry.name)).length
 }
 
 export async function getVideoInfo(videoPath: string): Promise<VideoInfo> {
-  const ffprobePath = await getResourcePath('ffprobe')
-  const output = await Command.create(ffprobePath, [
+  const ffprobeCommand = await getShellCommandName('ffprobe')
+  const output = await Command.create(ffprobeCommand, [
     '-v',
     'error',
     '-print_format',
@@ -187,11 +263,11 @@ export async function getFrameCount(videoPath: string): Promise<number> {
 export async function extractFrames(videoPath: string, outputDir: string, onProgress?: ProgressCallback): Promise<void> {
   await ensureDirectory(outputDir)
 
-  const ffmpegPath = await getResourcePath('ffmpeg')
   const totalFrames = await getFrameCount(videoPath)
   const outputPattern = `${outputDir}${sep()}frame_%08d.png`
 
-  const command = Command.create(ffmpegPath, ['-y', '-i', videoPath, '-vsync', '0', outputPattern])
+  const ffmpegCommand = await getShellCommandName('ffmpeg')
+  const command = Command.create(ffmpegCommand, ['-y', '-i', videoPath, '-vsync', '0', outputPattern])
   command.stderr.on('data', (line) => {
     const frame = parseFrameFromLine(line)
     if (frame !== null && onProgress) {
@@ -229,9 +305,9 @@ export async function encodeVideo(
   outputPath: string,
   fps: number,
   audioSourcePath: string | null,
+  encodeSettings: EncodeSettings,
   onProgress?: ProgressCallback,
 ): Promise<void> {
-  const ffmpegPath = await getResourcePath('ffmpeg')
   const slashIndex = outputPath.lastIndexOf('/')
   const backslashIndex = outputPath.lastIndexOf('\\')
   const lastSeparatorIndex = Math.max(slashIndex, backslashIndex)
@@ -249,9 +325,21 @@ export async function encodeVideo(
     args.push('-i', audioSourcePath, '-map', '0:v:0', '-map', '1:a:0?', '-c:a', 'copy')
   }
 
-  args.push('-c:v', 'libx264', '-pix_fmt', 'yuv420p', outputPath)
+  const videoEncoder = resolveVideoEncoder(encodeSettings)
+  args.push('-c:v', videoEncoder, '-pix_fmt', 'yuv420p')
 
-  const command = Command.create(ffmpegPath, args)
+  if (encodeSettings.useHardwareEncoding) {
+    args.push('-preset', 'p5', '-rc', 'vbr', '-cq', '21')
+  } else if (videoEncoder === 'libx264') {
+    args.push('-preset', 'medium', '-crf', '18')
+  } else if (videoEncoder === 'libx265') {
+    args.push('-preset', 'medium', '-crf', '23')
+  }
+
+  args.push(outputPath)
+
+  const ffmpegCommand = await getShellCommandName('ffmpeg')
+  const command = Command.create(ffmpegCommand, args)
   command.stderr.on('data', (line) => {
     const frame = parseFrameFromLine(line)
     if (frame !== null && onProgress) {

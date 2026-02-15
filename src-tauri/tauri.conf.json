@@ -29,8 +29,6 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "resources": {
-      "../resources/models/**/*": "resources/models/"
-    }
+    "resources": ["../resources/models"]
   }
 }

@@ -1,4 +1,5 @@
 import type { InterpolateParams, UpscaleParams } from '@/types/models'
+import type { EncodeSettings } from '@/types/encoding'
 
 export type ProcessingStatus = 'pending' | 'processing' | 'completed' | 'error' | 'cancelled'
 
@@ -31,5 +32,6 @@ export interface ProcessingTask {
   startTime: number | null
   endTime: number | null
   error: string | null
+  encodeSettings: EncodeSettings
   params: UpscaleParams | InterpolateParams
 }

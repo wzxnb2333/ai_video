@@ -40,6 +40,16 @@ const statusConfig: Record<
   },
 }
 
+const formatGpuSetting = (gpuId: number): string => {
+  return gpuId < 0 ? '自动' : String(gpuId)
+}
+
+const formatEncoderSetting = (task: { encodeSettings: { useHardwareEncoding: boolean; softwareEncoder: string; hardwareEncoder: string } }): string => {
+  return task.encodeSettings.useHardwareEncoding
+    ? task.encodeSettings.hardwareEncoder
+    : task.encodeSettings.softwareEncoder
+}
+
 export function QueuePage(): React.JSX.Element {
   const { tasks, cancelTask, clearCompleted } = useProcessing()
   const removeTask = useProcessingStore((state) => state.removeTask)
@@ -90,6 +100,21 @@ export function QueuePage(): React.JSX.Element {
                           帧：{task.currentFrame} / {task.totalFrames || '未知'}
                         </span>
                       </div>
+                      <p className="mt-2 text-xs text-zinc-950 dark:text-zinc-400">
+                        GPU 设置：{formatGpuSetting(task.params.gpuId)}
+                      </p>
+                      <p className="mt-1 text-xs text-zinc-950 dark:text-zinc-400">
+                        编码器：{formatEncoderSetting(task)}
+                      </p>
+
+                      {task.status === 'error' && task.error ? (
+                        <div className="mt-3 rounded-lg border border-red-300/70 dark:border-red-500/40 bg-red-50/80 dark:bg-red-900/20 p-2">
+                          <p className="text-xs font-medium text-red-700 dark:text-red-300">错误详情</p>
+                          <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-all text-xs text-red-700 dark:text-red-300">
+                            {task.error}
+                          </pre>
+                        </div>
+                      ) : null}
 
                       <div className="mt-4 flex gap-2">
                         {task.status === 'processing' || task.status === 'pending' ? (
