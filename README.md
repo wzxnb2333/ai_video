@@ -114,9 +114,3 @@ npm run tauri build
 - `src-tauri/target/release/bundle/msi/`
 - `src-tauri/target/release/bundle/nsis/`（若启用）
 
-4. GitHub Release
-
-- Tag: `v0.1.0`
-- 上传安装包与校验文件
-- Release 说明中标注协议与第三方依赖声明链接
-
