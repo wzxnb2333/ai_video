@@ -1,4 +1,4 @@
-# AI Video (Tauri v2)
+# AI Video Lab (Tauri v2)
 
 本项目是一个本地桌面端 AI 视频处理工具，基于 `Tauri v2 + React + TypeScript`，支持：
 
