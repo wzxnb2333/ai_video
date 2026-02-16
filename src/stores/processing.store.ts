@@ -33,10 +33,10 @@ export const useProcessingStore = create<ProcessingStoreState>((set) => ({
     set((state) => ({
       tasks: state.tasks.map((task) =>
         task.id === id
-          ? {
+          ? ({
               ...task,
               ...partial,
-            }
+            } as ProcessingTask)
           : task,
       ),
     }))

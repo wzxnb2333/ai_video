@@ -5,9 +5,9 @@ import { useProcessingStore } from '@/stores/processing.store'
 import { useSettingsStore } from '@/stores/settings.store'
 import type { EncodeSettings } from '@/types/encoding'
 import type { InterpolateParams, UpscaleParams } from '@/types/models'
-import type { ProcessingTask } from '@/types/pipeline'
+import type { ProcessingTask, WorkflowTaskParams } from '@/types/pipeline'
 
-const createTaskId = (type: 'upscale' | 'interpolate'): string => {
+const createTaskId = (type: 'upscale' | 'interpolate' | 'workflow'): string => {
   return `${type}-${Date.now()}-${Math.floor(Math.random() * 10_000)}`
 }
 
@@ -28,7 +28,8 @@ const toOutputPath = (inputPath: string, suffix: string, outputDirectory: string
   const filename = normalized[normalized.length - 1] ?? 'video.mp4'
   const dotIndex = filename.lastIndexOf('.')
   const baseName = dotIndex > 0 ? filename.slice(0, dotIndex) : filename
-  const outputFile = `${baseName}-${suffix}.mp4`
+  const extension = dotIndex > 0 ? filename.slice(dotIndex + 1).toLowerCase() : 'mp4'
+  const outputFile = `${baseName}-${suffix}.${extension || 'mp4'}`
 
   if (outputDirectory.trim().length > 0) {
     return joinPath(outputDirectory.trim(), outputFile)
@@ -45,13 +46,34 @@ const toOutputPath = (inputPath: string, suffix: string, outputDirectory: string
   return outputFile
 }
 
-const createBaseTask = (
-  type: 'upscale' | 'interpolate',
+function createBaseTask(
+  type: 'upscale',
   inputPath: string,
-  params: UpscaleParams | InterpolateParams,
+  params: UpscaleParams,
   encodeSettings: EncodeSettings,
   outputDirectory: string,
-): ProcessingTask => {
+): ProcessingTask
+function createBaseTask(
+  type: 'interpolate',
+  inputPath: string,
+  params: InterpolateParams,
+  encodeSettings: EncodeSettings,
+  outputDirectory: string,
+): ProcessingTask
+function createBaseTask(
+  type: 'workflow',
+  inputPath: string,
+  params: WorkflowTaskParams,
+  encodeSettings: EncodeSettings,
+  outputDirectory: string,
+): ProcessingTask
+function createBaseTask(
+  type: 'upscale' | 'interpolate' | 'workflow',
+  inputPath: string,
+  params: UpscaleParams | InterpolateParams | WorkflowTaskParams,
+  encodeSettings: EncodeSettings,
+  outputDirectory: string,
+): ProcessingTask {
   return {
     id: createTaskId(type),
     type,
@@ -62,12 +84,14 @@ const createBaseTask = (
     currentFrame: 0,
     totalFrames: 0,
     eta: 0,
+    stage: null,
+    stageMessage: '',
     startTime: null,
     endTime: null,
     error: null,
     encodeSettings,
     params,
-  }
+  } as ProcessingTask
 }
 
 export function useProcessing(): {
@@ -75,6 +99,7 @@ export function useProcessing(): {
   activeTask: ProcessingTask | null
   addUpscaleTask: (inputPath: string) => void
   addInterpolateTask: (inputPath: string) => void
+  addWorkflowTask: (inputPath: string) => void
   cancelTask: (id: string) => void
   clearCompleted: () => void
 } {
@@ -85,6 +110,7 @@ export function useProcessing(): {
 
   const upscaleParams = useSettingsStore((state) => state.upscaleParams)
   const interpolateParams = useSettingsStore((state) => state.interpolateParams)
+  const workflowSettings = useSettingsStore((state) => state.workflowSettings)
   const encodeSettings = useSettingsStore((state) => state.encodeSettings)
   const outputDirectory = useSettingsStore((state) => state.outputDirectory)
 
@@ -107,6 +133,25 @@ export function useProcessing(): {
     addTask(createBaseTask('interpolate', inputPath, interpolateParams, encodeSettings, outputDirectory))
   }
 
+  const addWorkflowTask = (inputPath: string): void => {
+    addTask(createBaseTask('workflow', inputPath, {
+      orderStrategy: workflowSettings.orderStrategy,
+      resolvedOrder: workflowSettings.orderStrategy === 'auto' ? null : workflowSettings.orderStrategy,
+      outputMode: workflowSettings.outputMode,
+      targetWidth: workflowSettings.targetWidth,
+      targetHeight: workflowSettings.targetHeight,
+      targetFps: workflowSettings.targetFps,
+      upscale: {
+        ...upscaleParams,
+        customArgs: [...upscaleParams.customArgs],
+      },
+      interpolate: {
+        ...interpolateParams,
+        customArgs: [...interpolateParams.customArgs],
+      },
+    }, encodeSettings, outputDirectory))
+  }
+
   const cancelTask = (id: string): void => {
     void cancelProcessingTask(id)
   }
@@ -116,6 +161,7 @@ export function useProcessing(): {
     activeTask,
     addUpscaleTask,
     addInterpolateTask,
+    addWorkflowTask,
     cancelTask,
     clearCompleted,
   }

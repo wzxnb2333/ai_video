@@ -7,7 +7,14 @@ import type { VideoInfo } from '@/types/pipeline'
 
 type ProgressCallback = (current: number, total: number) => void
 
+interface EncodeVideoOptions {
+  targetWidth?: number | null
+  targetHeight?: number | null
+  targetFps?: number | null
+}
+
 interface FfprobeStream {
+  index?: number
   codec_type?: string
   codec_name?: string
   width?: number
@@ -15,6 +22,11 @@ interface FfprobeStream {
   r_frame_rate?: string
   avg_frame_rate?: string
   nb_frames?: string
+  disposition?: {
+    default?: number
+    forced?: number
+    attached_pic?: number
+  }
 }
 
 interface FfprobeFormat {
@@ -202,9 +214,84 @@ function resolveVideoEncoder(settings: EncodeSettings): string {
   return settings.useHardwareEncoding ? settings.hardwareEncoder : settings.softwareEncoder
 }
 
-async function countFramesFromDirectory(framesDir: string): Promise<number> {
+interface FrameSequenceInfo {
+  extension: 'png' | 'jpg' | 'jpeg' | 'webp'
+  startNumber: number
+  frameCount: number
+  inputPattern: string
+}
+
+function parseFrameNumber(filename: string): number | null {
+  const match = filename.match(/^frame_(\d+)\.(png|jpg|jpeg|webp)$/i)
+  if (!match) {
+    return null
+  }
+
+  const value = Number(match[1])
+  if (!Number.isFinite(value)) {
+    return null
+  }
+  return value
+}
+
+async function resolveFrameSequence(framesDir: string): Promise<FrameSequenceInfo> {
   const entries = await readDir(framesDir)
-  return entries.filter((entry) => entry.isFile && /\.(png|jpg|jpeg|webp)$/i.test(entry.name)).length
+  const extensionBuckets = new Map<string, number[]>()
+
+  for (const entry of entries) {
+    if (!entry.isFile) {
+      continue
+    }
+
+    const number = parseFrameNumber(entry.name)
+    if (number === null) {
+      continue
+    }
+
+    const extension = entry.name.split('.').pop()?.toLowerCase()
+    if (!extension || (extension !== 'png' && extension !== 'jpg' && extension !== 'jpeg' && extension !== 'webp')) {
+      continue
+    }
+
+    const bucket = extensionBuckets.get(extension) ?? []
+    bucket.push(number)
+    extensionBuckets.set(extension, bucket)
+  }
+
+  let selectedExtension: 'png' | 'jpg' | 'jpeg' | 'webp' | null = null
+  let selectedNumbers: number[] = []
+
+  for (const [extension, numbers] of extensionBuckets.entries()) {
+    if (numbers.length > selectedNumbers.length) {
+      selectedExtension = extension as 'png' | 'jpg' | 'jpeg' | 'webp'
+      selectedNumbers = numbers
+    }
+  }
+
+  if (!selectedExtension || selectedNumbers.length === 0) {
+    throw new Error(`No valid frame sequence found in ${framesDir}`)
+  }
+
+  const sorted = [...selectedNumbers].sort((a, b) => a - b)
+  const startNumber = sorted[0] ?? 0
+  let contiguousCount = 0
+  for (let index = 0; index < sorted.length; index += 1) {
+    if (sorted[index] !== startNumber + index) {
+      break
+    }
+    contiguousCount += 1
+  }
+
+  if (contiguousCount <= 0) {
+    throw new Error(`Frame sequence is not contiguous in ${framesDir}`)
+  }
+
+  return {
+    extension: selectedExtension,
+    startNumber,
+    frameCount: contiguousCount,
+    inputPattern: `${framesDir}${sep()}frame_%08d.${selectedExtension}`,
+  }
 }
 
 export async function getVideoInfo(videoPath: string): Promise<VideoInfo> {
@@ -253,6 +340,54 @@ export async function getVideoInfo(videoPath: string): Promise<VideoInfo> {
     audioCodec: audioStream?.codec_name ?? null,
     fileSize: Number(format.size ?? 0),
   }
+}
+
+async function probeStreams(videoPath: string): Promise<FfprobeStream[]> {
+  const ffprobeCommand = await getShellCommandName('ffprobe')
+  const output = await Command.create(ffprobeCommand, [
+    '-v',
+    'error',
+    '-print_format',
+    'json',
+    '-show_streams',
+    videoPath,
+  ]).execute()
+
+  if (output.code !== 0) {
+    throw new Error(output.stderr || 'ffprobe failed to read streams')
+  }
+
+  const parsed = JSON.parse(output.stdout) as FfprobeOutput
+  return parsed.streams ?? []
+}
+
+function getDispositionFlags(stream: FfprobeStream): string | null {
+  const isDefault = stream.disposition?.default === 1
+  const isForced = stream.disposition?.forced === 1
+  if (!isDefault && !isForced) {
+    return '0'
+  }
+
+  if (isDefault && isForced) {
+    return 'default+forced'
+  }
+  if (isDefault) {
+    return 'default'
+  }
+  return 'forced'
+}
+
+function normalizeScaleDimension(value: number | null | undefined, label: 'width' | 'height'): number | null {
+  if (!Number.isFinite(value ?? NaN)) {
+    return null
+  }
+
+  const numeric = Math.trunc(value ?? 0)
+  if (numeric <= 0) {
+    throw new Error(`Invalid target ${label}: ${String(value)}`)
+  }
+
+  return numeric % 2 === 0 ? numeric : numeric + 1
 }
 
 export async function getFrameCount(videoPath: string): Promise<number> {
@@ -307,6 +442,7 @@ export async function encodeVideo(
   audioSourcePath: string | null,
   encodeSettings: EncodeSettings,
   onProgress?: ProgressCallback,
+  options?: EncodeVideoOptions,
 ): Promise<void> {
   const slashIndex = outputPath.lastIndexOf('/')
   const backslashIndex = outputPath.lastIndexOf('\\')
@@ -316,24 +452,101 @@ export async function encodeVideo(
     await ensureDirectory(outputDir).catch(() => undefined)
   }
 
-  const totalFrames = await countFramesFromDirectory(framesDir)
-  const inputPattern = `${framesDir}${sep()}frame_%08d.png`
+  const sequence = await resolveFrameSequence(framesDir)
+  const totalFrames = sequence.frameCount
+  const inputPattern = sequence.inputPattern
 
-  const args = ['-y', '-framerate', `${fps}`, '-i', inputPattern]
+  const args = ['-y', '-framerate', `${fps}`, '-start_number', `${sequence.startNumber}`, '-i', inputPattern]
+  let targetVideoOutputIndex = 0
 
   if (audioSourcePath) {
-    args.push('-i', audioSourcePath, '-map', '0:v:0', '-map', '1:a:0?', '-c:a', 'copy')
+    const sourceStreams = await probeStreams(audioSourcePath)
+    const sourceSorted = [...sourceStreams]
+      .filter((stream) => typeof stream.index === 'number')
+      .sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
+    const sourceMainVideo =
+      sourceSorted.find((stream) => stream.codec_type === 'video' && stream.disposition?.attached_pic !== 1)
+      ?? sourceSorted.find((stream) => stream.codec_type === 'video')
+
+    args.push(
+      '-i',
+      audioSourcePath,
+    )
+
+    if (sourceMainVideo?.index !== undefined) {
+      let videoCounter = 0
+      let audioCounter = 0
+      let subtitleCounter = 0
+
+      for (const stream of sourceSorted) {
+        const streamIndex = stream.index
+        if (streamIndex === undefined) {
+          continue
+        }
+
+        if (streamIndex === sourceMainVideo.index) {
+          args.push('-map', '0:v:0')
+          targetVideoOutputIndex = videoCounter
+        } else {
+          args.push('-map', `1:${streamIndex}`)
+        }
+
+        if (stream.codec_type === 'video') {
+          videoCounter += 1
+          continue
+        }
+
+        if (stream.codec_type === 'audio') {
+          const disposition = getDispositionFlags(stream)
+          if (disposition) {
+            args.push(`-disposition:a:${audioCounter}`, disposition)
+          }
+          audioCounter += 1
+          continue
+        }
+
+        if (stream.codec_type === 'subtitle') {
+          const disposition = getDispositionFlags(stream)
+          if (disposition) {
+            args.push(`-disposition:s:${subtitleCounter}`, disposition)
+          }
+          subtitleCounter += 1
+        }
+      }
+    } else {
+      args.push('-map', '0:v:0', '-map', '1')
+    }
+
+    args.push('-map_metadata', '1', '-map_chapters', '1', '-copy_unknown')
   }
 
   const videoEncoder = resolveVideoEncoder(encodeSettings)
-  args.push('-c:v', videoEncoder, '-pix_fmt', 'yuv420p')
+  args.push('-c', 'copy', `-c:v:${targetVideoOutputIndex}`, videoEncoder, `-pix_fmt:v:${targetVideoOutputIndex}`, 'yuv420p')
+
+  const filterParts: string[] = []
+  const normalizedTargetWidth = normalizeScaleDimension(options?.targetWidth, 'width')
+  const normalizedTargetHeight = normalizeScaleDimension(options?.targetHeight, 'height')
+  if (normalizedTargetWidth !== null && normalizedTargetHeight !== null) {
+    filterParts.push(`scale=w=${normalizedTargetWidth}:h=${normalizedTargetHeight}:flags=lanczos`)
+  }
+
+  if (Number.isFinite(options?.targetFps ?? NaN) && (options?.targetFps ?? 0) > 0) {
+    const targetFps = options?.targetFps ?? 0
+    if (Math.abs(targetFps - fps) > 0.001) {
+      filterParts.push(`fps=${targetFps}`)
+    }
+  }
+
+  if (filterParts.length > 0) {
+    args.push(`-vf:v:${targetVideoOutputIndex}`, filterParts.join(','))
+  }
 
   if (encodeSettings.useHardwareEncoding) {
-    args.push('-preset', 'p5', '-rc', 'vbr', '-cq', '21')
+    args.push(`-preset:v:${targetVideoOutputIndex}`, 'p5', `-rc:v:${targetVideoOutputIndex}`, 'vbr', `-cq:v:${targetVideoOutputIndex}`, '21')
   } else if (videoEncoder === 'libx264') {
-    args.push('-preset', 'medium', '-crf', '18')
+    args.push(`-preset:v:${targetVideoOutputIndex}`, 'medium', `-crf:v:${targetVideoOutputIndex}`, '18')
   } else if (videoEncoder === 'libx265') {
-    args.push('-preset', 'medium', '-crf', '23')
+    args.push(`-preset:v:${targetVideoOutputIndex}`, 'medium', `-crf:v:${targetVideoOutputIndex}`, '23')
   }
 
   args.push(outputPath)

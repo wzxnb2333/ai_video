@@ -1,121 +1,122 @@
 # AI Video (Tauri v2)
 
-本项目是一个本地桌面端 AI 视频处理工具，基于 `Tauri v2 + React + TypeScript`，主打离线、可控、可调参。
+本项目是一个本地桌面端 AI 视频处理工具，基于 `Tauri v2 + React + TypeScript`，支持：
 
-## 功能概览
+- AI 超分（waifu2x-ncnn-vulkan）
+- AI 补帧（rife-ncnn-vulkan）
+- 组合工作流（补帧 + 超分，自动顺序）
+- GPU 检测、线程/Tile 预设、编码策略管理
+- 中英文界面切换（设置后自动记忆）
 
-- 视频超分辨率：`waifu2x-ncnn-vulkan`
-- 视频补帧：`rife-ncnn-vulkan`
-- 元数据读取：`ffprobe`
-- 抽帧与编码：`ffmpeg`
-- 队列执行：`pending -> processing -> completed/error/cancelled`
-- GPU 检测：支持手动检查 GPU 编号、显存、推荐参数
-- 参数记忆：核心设置统一持久化（本地 `localStorage`）
+## 1. 运行与构建
 
-## 新增能力（近期）
-
-- 自动 GPU 运行策略
-  - `gpuId = -1` 自动选择设备
-  - 超分 `tileSize = 0` 自动按显存推荐
-  - 自动线程参数（可手动覆盖）
-- 超分/补帧预设
-  - 补帧新增线程预设（含 `4:8:4`）
-  - 超分新增联动预设（Tile + 线程），支持一键设置 `4:8:4 + Tile 320`
-- 编码通用设置
-  - 支持软件/硬件编码切换
-  - 软件编码器：`libx264` / `libx265`
-  - 硬件编码器：`h264_nvenc` / `hevc_nvenc`
-- 错误可视化增强
-  - 模型缺失、路径失败会返回更明确的 Checked 路径信息
-
-## 技术栈
-
-- 前端：React 19、Vite 7、TypeScript、Tailwind CSS 4、Zustand
-- 桌面容器：Tauri v2
-- Tauri 插件：`@tauri-apps/plugin-shell`、`@tauri-apps/plugin-fs`、`@tauri-apps/plugin-dialog`
-
-## 快速开始
-
-### 1. 安装依赖
+### 开发模式
 
 ```bash
 npm install
-```
-
-### 2. 开发模式
-
-```bash
 npm run tauri dev
 ```
 
-### 3. 生产构建
+### 正式构建
 
 ```bash
+npm run lint
 npm run build
 npm run tauri build
 ```
 
-## 目录结构
+Tauri 配置已包含模型与 ffmpeg 资源打包：
 
-- `src/pages`：页面层（首页、超分、补帧、队列、设置）
-- `src/components`：组件层（布局、参数面板、UI）
-- `src/lib`
-  - `ffmpeg.ts`：ffmpeg/ffprobe 调用与进度解析
-  - `upscaler.ts`：waifu2x 调用、模型路径解析、线程策略
-  - `interpolator.ts`：RIFE 调用、模型路径解析、线程策略
-  - `gpu.ts`：GPU 设备检测、显存合并、推荐参数
-  - `pipeline.ts`：处理流水线（抽帧 -> AI 处理 -> 编码）
-- `src/stores`：Zustand 持久化设置与队列状态
-- `src/types`：参数模型与任务类型
-- `src-tauri`：Rust 主进程、权限能力、打包配置
-- `resources/models`：模型与可执行文件资源
+- `src-tauri/tauri.conf.json`
+- `"bundle.resources": ["../resources/models"]`
 
-## 模型与资源布局
+## 2. 目录说明
 
-### waifu2x
+- `src/`: React + TypeScript 前端
+- `src-tauri/`: Rust/Tauri 主进程
+- `resources/models/`:
+  - `ffmpeg/ffmpeg.exe`、`ffprobe.exe`
+  - `waifu2x-ncnn-vulkan/*`
+  - `rife-ncnn-vulkan/*`
 
-- 可执行文件：`resources/models/waifu2x-ncnn-vulkan/waifu2x-ncnn-vulkan.exe`
-- 模型目录示例：`resources/models/waifu2x-ncnn-vulkan/models-cunet`
+## 3. 开源软件与链接
 
-### RIFE
+### 核心可执行与模型
 
-- 可执行文件：`resources/models/rife-ncnn-vulkan/rife-ncnn-vulkan.exe`
-- 模型目录示例：`resources/models/rife-ncnn-vulkan/rife-v4.6`
+1. FFmpeg / FFprobe
+- 官方主页: https://ffmpeg.org/
+- 法律说明: https://ffmpeg.org/legal.html
+- 本项目使用的 Windows 构建来源: https://www.gyan.dev/ffmpeg/builds/
+- 构建仓库: https://github.com/GyanD/codexffmpeg
 
-### ffmpeg / ffprobe
+2. waifu2x-ncnn-vulkan
+- 仓库: https://github.com/nihui/waifu2x-ncnn-vulkan
+- 协议: MIT
+- 本地协议文件: `resources/models/waifu2x-ncnn-vulkan/LICENSE`
 
-- `resources/models/ffmpeg/ffmpeg.exe`
-- `resources/models/ffmpeg/ffprobe.exe`
+3. rife-ncnn-vulkan
+- 仓库: https://github.com/nihui/rife-ncnn-vulkan
+- 协议: MIT
+- 本地协议文件: `resources/models/rife-ncnn-vulkan/LICENSE`
 
-## 参数记忆范围
+4. ncnn（waifu2x/rife 依赖）
+- 仓库: https://github.com/Tencent/ncnn
+- 协议: BSD-3-Clause
 
-以下设置默认会持久化并在重启后恢复：
+## 4. 协议与合规
 
-- 超分参数：模型、倍率、降噪、Tile、线程、GPU、输出格式
-- 补帧参数：模型、倍率、UHD、线程、GPU
-- 编码参数：是否硬编、软编/硬编编码器
-- 输出目录
-- 主题
+### 本项目协议
 
-## 常见问题
+本项目源代码采用：
 
-### 1. `Interpolate model not found: rife-v4.6`
+- `GPL-3.0-or-later`
 
-- 检查目录：`resources/models/rife-ncnn-vulkan/rife-v4.6`
-- 至少应包含：`flownet.param`、`flownet.bin`（按模型版本可能还有其他文件）
+见根目录：`LICENSE`
 
-### 2. 元数据读取失败 / `os error 3`
+### 第三方声明
 
-- 检查 `ffprobe.exe` 是否存在于 `resources/models/ffmpeg/`
-- 确认应用运行于 Tauri 桌面环境（纯网页环境无法访问本地二进制）
+第三方组件与协议说明见：
 
-### 3. GPU 占用不高（例如 40%-60%）
+- `THIRD_PARTY_NOTICES.md`
+- `resources/models/ffmpeg/NOTICE.txt`
 
-- 先在参数页点击“检查 GPU”确认设备编号
-- 尝试线程预设：`4:8:4`（若稳定）
-- 超分可提高 `Tile`，补帧可调整 `-j load:proc:save`
+说明：
 
-### 4. 编码阶段报输入帧不存在
+- `waifu2x-ncnn-vulkan` 与 `rife-ncnn-vulkan` 的 MIT 协议文本已随包分发。
+- 本项目分发的 FFmpeg 为 GPL enabled 构建（可通过 `ffmpeg -version` 中 `--enable-gpl --enable-version3` 确认），分发者需遵守对应许可证要求。
 
-- 通常是上游 AI 阶段未正确输出帧，先看队列中的错误详情
-- 优先排查模型目录、GPU 参数、以及自定义参数冲突
+## 5. 功能摘要（v0.1.0）
+
+- 超分 / 补帧 / 工作流三种任务类型
+- 任务队列、取消、进度与错误详情
+- 补帧与超分预设（含 `4:8:4`）
+- GPU 手动检测（编号、显存、推荐参数）
+- 通用编码设置（软编/硬编、编码器选择）
+- 中英文语言切换并持久化
+
+## 6. 发布流程（建议）
+
+1. 代码检查
+
+```bash
+npm run lint
+npm run build
+```
+
+2. 生成安装包
+
+```bash
+npm run tauri build
+```
+
+3. 产物目录（Windows）
+
+- `src-tauri/target/release/bundle/msi/`
+- `src-tauri/target/release/bundle/nsis/`（若启用）
+
+4. GitHub Release
+
+- Tag: `v0.1.0`
+- 上传安装包与校验文件
+- Release 说明中标注协议与第三方依赖声明链接
+

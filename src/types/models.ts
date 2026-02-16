@@ -1,5 +1,5 @@
 export interface UpscaleParams {
-  scale: 2 | 3 | 4
+  scale: 2 | 4
   denoiseLevel: 0 | 1 | 2 | 3
   tileSize: number
   threadSpec: string
@@ -18,12 +18,23 @@ export interface InterpolateParams {
   customArgs: string[]
 }
 
+export type WorkflowOrderStrategy = 'auto' | 'interpolate-first' | 'upscale-first'
+export type WorkflowOutputMode = 'ratio' | 'target'
+
+export interface WorkflowSettings {
+  orderStrategy: WorkflowOrderStrategy
+  outputMode: WorkflowOutputMode
+  targetWidth: number
+  targetHeight: number
+  targetFps: number
+}
+
 export interface UpscaleModelConfig {
   name: string
   displayName: string
   description: string
   supportedScales: number[]
-  defaultScale: 2 | 3 | 4
+  defaultScale: 2 | 4
 }
 
 export interface InterpolateModelConfig {
@@ -54,6 +65,14 @@ export const DEFAULT_INTERPOLATE_PARAMS: InterpolateParams = {
   customArgs: [],
 }
 
+export const DEFAULT_WORKFLOW_SETTINGS: WorkflowSettings = {
+  orderStrategy: 'auto',
+  outputMode: 'ratio',
+  targetWidth: 3840,
+  targetHeight: 2160,
+  targetFps: 60,
+}
+
 export const UPSCALE_MODELS: UpscaleModelConfig[] = [
   {
     name: 'models-cunet',
@@ -66,14 +85,14 @@ export const UPSCALE_MODELS: UpscaleModelConfig[] = [
     name: 'models-upconv_7_anime_style_art_rgb',
     displayName: 'Anime Style Art RGB',
     description: 'Optimized for anime illustrations, line art, and flat color regions.',
-    supportedScales: [2, 3, 4],
+    supportedScales: [2, 4],
     defaultScale: 2,
   },
   {
     name: 'models-upconv_7_photo',
     displayName: 'Photo Realistic',
     description: 'Sharper textures for live-action footage and photographic inputs.',
-    supportedScales: [2, 3, 4],
+    supportedScales: [2, 4],
     defaultScale: 2,
   },
 ]

@@ -53,7 +53,7 @@ export function useVideoInfo(filePath: string | null): {
     const loadVideoInfo = async (): Promise<void> => {
       try {
         if (!isTauriRuntime()) {
-          throw new Error('仅在桌面应用环境可读取视频元数据')
+          throw new Error('Video metadata can only be read in desktop runtime')
         }
 
         const result = await getVideoInfo(filePath)

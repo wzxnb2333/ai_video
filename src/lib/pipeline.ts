@@ -4,8 +4,9 @@ import { mkdir, remove } from '@tauri-apps/plugin-fs'
 import { cancelActiveFfmpegProcess, encodeVideo, extractFrames, getVideoInfo } from '@/lib/ffmpeg'
 import { cancelActiveInterpolateProcess, runInterpolate } from '@/lib/interpolator'
 import { cancelActiveUpscaleProcess, runUpscale } from '@/lib/upscaler'
+import { getWorkflowOrderLabel, resolveWorkflowPlan } from '@/lib/workflow'
 import type { InterpolateParams, UpscaleParams } from '@/types/models'
-import type { ProcessingTask } from '@/types/pipeline'
+import type { ProcessingTask, WorkflowTaskParams } from '@/types/pipeline'
 
 export interface PipelineProgress {
   stage: 'extract' | 'process' | 'encode' | 'done'
@@ -26,6 +27,10 @@ function isUpscaleTask(task: ProcessingTask): task is ProcessingTask & { params:
   return task.type === 'upscale'
 }
 
+function isWorkflowTask(task: ProcessingTask): task is ProcessingTask & { params: WorkflowTaskParams } {
+  return task.type === 'workflow'
+}
+
 function calculateEta(startedAtMs: number, progress: number): number {
   if (progress <= 0) {
     return 0
@@ -35,6 +40,19 @@ function calculateEta(startedAtMs: number, progress: number): number {
   const totalSecEstimate = elapsedSec / (progress / 100)
   const eta = Math.max(0, Math.round(totalSecEstimate - elapsedSec))
   return Number.isFinite(eta) ? eta : 0
+}
+
+function stripCustomThreadArgs(customArgs: string[]): string[] {
+  const sanitized: string[] = []
+  for (let index = 0; index < customArgs.length; index += 1) {
+    const arg = customArgs[index]
+    if (arg === '-j') {
+      index += 1
+      continue
+    }
+    sanitized.push(arg)
+  }
+  return sanitized
 }
 
 export class ProcessingPipeline {
@@ -103,7 +121,8 @@ export class ProcessingPipeline {
       await extractFrames(task.inputPath, extractedDir, (current, total) => {
         const boundedTotal = Math.max(1, total)
         const stageRatio = Math.min(current / boundedTotal, 1)
-        const overallProgress = stageRatio * 25
+        const extractWeight = isWorkflowTask(task) ? 20 : 25
+        const overallProgress = stageRatio * extractWeight
 
         emit({
           stage: 'extract',
@@ -116,6 +135,9 @@ export class ProcessingPipeline {
       })
 
       ensureNotCancelled()
+
+      let outputFps = sourceInfo.fps
+      let encodeOptions: { targetWidth?: number | null; targetHeight?: number | null; targetFps?: number | null } | undefined
 
       if (isUpscaleTask(task)) {
         await runUpscale(extractedDir, processedDir, task.params, (current, total) => {
@@ -147,16 +169,93 @@ export class ProcessingPipeline {
             message: 'Interpolating frames with RIFE',
           })
         })
+        outputFps = sourceInfo.fps * task.params.multiplier
+      } else if (isWorkflowTask(task)) {
+        const intermediateDir = await join(taskTempDir, 'frames_mid')
+        await mkdir(intermediateDir, { recursive: true })
+
+        const workflowPlan = resolveWorkflowPlan(
+          {
+            width: sourceInfo.width,
+            height: sourceInfo.height,
+            fps: sourceInfo.fps,
+            totalFrames: sourceInfo.totalFrames,
+          },
+          task.params,
+        )
+
+        const totalSteps = workflowPlan.steps.length
+        const processWeightPerStep = 70 / Math.max(1, totalSteps)
+        let stepInputDir = extractedDir
+
+        for (let stepIndex = 0; stepIndex < workflowPlan.steps.length; stepIndex += 1) {
+          const stepType = workflowPlan.steps[stepIndex]
+          const stepOutputDir = stepIndex === workflowPlan.steps.length - 1 ? processedDir : intermediateDir
+          const stepLabel = stepType === 'upscale' ? 'Upscale' : 'Interpolate'
+          const stepMessage = `Workflow step ${stepIndex + 1}/${totalSteps}: ${getWorkflowOrderLabel(workflowPlan.order, 'en-US')} (${stepLabel})`
+
+          if (stepType === 'upscale') {
+            await runUpscale(stepInputDir, stepOutputDir, workflowPlan.upscaleParams, (current, total) => {
+              const boundedTotal = Math.max(1, total)
+              const stageRatio = Math.min(current / boundedTotal, 1)
+              const overallProgress = 20 + stepIndex * processWeightPerStep + stageRatio * processWeightPerStep
+
+              emit({
+                stage: 'process',
+                progress: overallProgress,
+                currentFrame: current,
+                totalFrames: boundedTotal,
+                eta: calculateEta(startedAt, overallProgress),
+                message: stepMessage,
+              })
+            })
+          } else {
+            const interpolateParamsForRun: InterpolateParams =
+              workflowPlan.order === 'upscale-first' && stepIndex > 0
+                ? {
+                    ...workflowPlan.interpolateParams,
+                    uhd: true,
+                    threadSpec: '',
+                    customArgs: stripCustomThreadArgs(workflowPlan.interpolateParams.customArgs),
+                  }
+                : workflowPlan.interpolateParams
+
+            await runInterpolate(stepInputDir, stepOutputDir, interpolateParamsForRun, (current, total) => {
+              const boundedTotal = Math.max(1, total)
+              const stageRatio = Math.min(current / boundedTotal, 1)
+              const overallProgress = 20 + stepIndex * processWeightPerStep + stageRatio * processWeightPerStep
+
+              emit({
+                stage: 'process',
+                progress: overallProgress,
+                currentFrame: current,
+                totalFrames: boundedTotal,
+                eta: calculateEta(startedAt, overallProgress),
+                message: stepMessage,
+              })
+            })
+          }
+
+          ensureNotCancelled()
+          stepInputDir = stepOutputDir
+        }
+
+        outputFps = workflowPlan.sequenceFps
+        encodeOptions = {
+          targetWidth: workflowPlan.outputWidth,
+          targetHeight: workflowPlan.outputHeight,
+          targetFps: workflowPlan.outputFps,
+        }
       }
 
       ensureNotCancelled()
 
-      const outputFps = isInterpolateTask(task) ? sourceInfo.fps * task.params.multiplier : sourceInfo.fps
-
       await encodeVideo(processedDir, task.outputPath, outputFps, task.inputPath, task.encodeSettings, (current, total) => {
         const boundedTotal = Math.max(1, total)
         const stageRatio = Math.min(current / boundedTotal, 1)
-        const overallProgress = 85 + stageRatio * 15
+        const encodeBase = isWorkflowTask(task) ? 90 : 85
+        const encodeWeight = isWorkflowTask(task) ? 10 : 15
+        const overallProgress = encodeBase + stageRatio * encodeWeight
 
         emit({
           stage: 'encode',
@@ -166,7 +265,7 @@ export class ProcessingPipeline {
           eta: calculateEta(startedAt, overallProgress),
           message: 'Encoding final video',
         })
-      })
+      }, encodeOptions)
 
       ensureNotCancelled()
 

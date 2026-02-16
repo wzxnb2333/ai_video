@@ -1,5 +1,5 @@
 import { resolveResource } from '@tauri-apps/api/path'
-import { exists, mkdir } from '@tauri-apps/plugin-fs'
+import { exists, mkdir, readDir } from '@tauri-apps/plugin-fs'
 import { Command } from '@tauri-apps/plugin-shell'
 
 import { getShellCommandName } from '@/lib/ffmpeg'
@@ -9,6 +9,7 @@ import type { UpscaleParams } from '@/types/models'
 type UpscaleProgressCallback = (current: number, total: number) => void
 
 let activeUpscaleChild: { kill: () => Promise<void> } | null = null
+const VALID_WAIFU2X_SCALES = new Set([1, 2, 4, 8, 16, 32])
 
 function isPathExists(path: string): Promise<boolean> {
   return exists(path).catch(() => false)
@@ -54,16 +55,17 @@ function parseProgressLine(line: string): { current: number; total: number } | n
     return { current: percentage, total: 100 }
   }
 
-  const fractionMatch = line.match(/(\d+)\s*\/\s*(\d+)/)
-  if (fractionMatch) {
-    const current = Number(fractionMatch[1])
-    const total = Number(fractionMatch[2])
-    if (Number.isFinite(current) && Number.isFinite(total) && total > 0) {
-      return { current: Math.min(current, total), total }
-    }
-  }
-
   return null
+}
+
+async function countInputFrames(inputDir: string): Promise<number> {
+  const entries = await readDir(inputDir)
+  return entries.filter((entry) => entry.isFile && /\.(png|jpg|jpeg|webp)$/i.test(entry.name)).length
+}
+
+async function countOutputFrames(outputDir: string): Promise<number> {
+  const entries = await readDir(outputDir)
+  return entries.filter((entry) => entry.isFile && /\.(png|jpg|jpeg|webp)$/i.test(entry.name)).length
 }
 
 async function resolveModelDirectory(modelName: string): Promise<string> {
@@ -109,6 +111,10 @@ export async function runUpscale(
   params: UpscaleParams,
   onProgress?: UpscaleProgressCallback,
 ): Promise<void> {
+  if (!VALID_WAIFU2X_SCALES.has(params.scale)) {
+    throw new Error(`Invalid waifu2x scale ${String(params.scale)}. Supported scales: 1/2/4/8/16/32.`)
+  }
+
   if (!(await exists(outputDir))) {
     await mkdir(outputDir, { recursive: true })
   }
@@ -118,6 +124,9 @@ export async function runUpscale(
     threadSpec: '1:2:2',
   }))
   const modelPath = await resolveModelDirectory(params.model)
+  const inputFrames = await countInputFrames(inputDir)
+  const expectedTotal = inputFrames > 0 ? inputFrames : 100
+  let lastReported = 0
   const tileSize = params.tileSize > 0 ? params.tileSize : recommendation.tileSize
   const manualThreadSpec = params.threadSpec.trim()
   const finalThreadSpec = manualThreadSpec || recommendation.threadSpec
@@ -148,18 +157,50 @@ export async function runUpscale(
   command.stdout.on('data', (line) => {
     const parsed = parseProgressLine(line)
     if (parsed && onProgress) {
-      onProgress(parsed.current, parsed.total)
+      const normalizedCurrent = parsed.total === 100
+        ? Math.round((parsed.current / 100) * expectedTotal)
+        : parsed.current
+      const normalizedTotal = parsed.total === 100 ? expectedTotal : parsed.total
+      const boundedCurrent = Math.min(normalizedCurrent, normalizedTotal)
+      if (boundedCurrent > lastReported) {
+        lastReported = boundedCurrent
+        onProgress(boundedCurrent, normalizedTotal)
+      }
     }
   })
 
   command.stderr.on('data', (line) => {
     const parsed = parseProgressLine(line)
     if (parsed && onProgress) {
-      onProgress(parsed.current, parsed.total)
+      const normalizedCurrent = parsed.total === 100
+        ? Math.round((parsed.current / 100) * expectedTotal)
+        : parsed.current
+      const normalizedTotal = parsed.total === 100 ? expectedTotal : parsed.total
+      const boundedCurrent = Math.min(normalizedCurrent, normalizedTotal)
+      if (boundedCurrent > lastReported) {
+        lastReported = boundedCurrent
+        onProgress(boundedCurrent, normalizedTotal)
+      }
     }
   })
 
   activeUpscaleChild = await command.spawn()
+
+  const pollInterval = setInterval(() => {
+    if (!onProgress) {
+      return
+    }
+
+    void countOutputFrames(outputDir)
+      .then((count) => {
+        const boundedCount = Math.min(count, expectedTotal)
+        if (boundedCount > lastReported) {
+          lastReported = boundedCount
+          onProgress(boundedCount, expectedTotal)
+        }
+      })
+      .catch(() => undefined)
+  }, 1200)
 
   const result = await new Promise<{ code: number | null; stderr: string }>((resolveResult, rejectResult) => {
     const stderrParts: string[] = []
@@ -177,12 +218,17 @@ export async function runUpscale(
   })
 
   activeUpscaleChild = null
+  clearInterval(pollInterval)
 
   if (result.code !== 0) {
-    throw new Error(result.stderr || `waifu2x-ncnn-vulkan failed with code ${String(result.code)}`)
+    const stderr = result.stderr || `waifu2x-ncnn-vulkan failed with code ${String(result.code)}`
+    throw new Error(
+      `${stderr}\n[upscale debug] scale=${params.scale}, model=${params.model}, gpu=${params.gpuId}, tile=${tileSize}, thread=${finalThreadSpec || 'auto'}, outputFormat=${params.format}`,
+    )
   }
 
   if (onProgress) {
-    onProgress(100, 100)
+    lastReported = expectedTotal
+    onProgress(expectedTotal, expectedTotal)
   }
 }

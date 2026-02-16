@@ -2,10 +2,14 @@ import { Cpu, ScanSearch } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { t } from '@/lib/i18n'
 import { detectGpuDevices, getNcnnRecommendationByVram, getRifeRecommendationByVram } from '@/lib/gpu'
+import { useSettingsStore } from '@/stores/settings.store'
 import type { GpuDeviceInfo } from '@/lib/gpu'
 
 export function GpuCheckPanel(): React.JSX.Element {
+  const language = useSettingsStore((state) => state.language)
+  const tt = (zh: string, en: string): string => t(language, zh, en)
   const [loading, setLoading] = useState(false)
   const [devices, setDevices] = useState<GpuDeviceInfo[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -32,8 +36,8 @@ export function GpuCheckPanel(): React.JSX.Element {
     <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/70 p-4 space-y-3">
       <div className="flex items-center justify-between gap-3">
         <div className="space-y-1">
-          <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">手动检查 GPU</p>
-          <p className="text-xs text-zinc-600 dark:text-zinc-400">用于确认 Vulkan 设备编号。检测命令不会修改文件。</p>
+          <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{tt('手动检查 GPU', 'Manual GPU Check')}</p>
+          <p className="text-xs text-zinc-600 dark:text-zinc-400">{tt('用于确认 Vulkan 设备编号。检测命令不会修改文件。', 'Used to verify Vulkan device index. Detection does not modify files.')}</p>
         </div>
         <Button
           type="button"
@@ -46,7 +50,7 @@ export function GpuCheckPanel(): React.JSX.Element {
           disabled={loading}
         >
           <ScanSearch className="mr-1.5 h-3.5 w-3.5" />
-          {loading ? '检测中...' : '检查 GPU'}
+          {loading ? tt('检测中...', 'Checking...') : tt('检查 GPU', 'Check GPU')}
         </Button>
       </div>
 
@@ -60,13 +64,13 @@ export function GpuCheckPanel(): React.JSX.Element {
                 const rifeRecommendation = getRifeRecommendationByVram(device.vramMb)
                 return (
                   <p className="text-zinc-600 dark:text-zinc-400">
-                    显存: {device.vramMb ? `${device.vramMb} MB` : '未知'}
+                    {tt('显存', 'VRAM')}: {device.vramMb ? `${device.vramMb} MB` : tt('未知', 'Unknown')}
                     {' | '}
-                    推荐 Tile: {ncnnRecommendation.tileSize}
+                    {tt('推荐 Tile', 'Recommended Tile')}: {ncnnRecommendation.tileSize}
                     {' | '}
-                    超分线程: {ncnnRecommendation.threadSpec}
+                    {tt('超分线程', 'Upscale threads')}: {ncnnRecommendation.threadSpec}
                     {' | '}
-                    补帧线程: {rifeRecommendation.threadSpec}
+                    {tt('补帧线程', 'Interpolation threads')}: {rifeRecommendation.threadSpec}
                   </p>
                 )
               })()}
@@ -76,14 +80,14 @@ export function GpuCheckPanel(): React.JSX.Element {
       ) : null}
 
       {checked && devices.length === 0 && !error ? (
-        <p className="text-xs text-amber-700 dark:text-amber-300">未检测到可用 GPU，可能已回退到 CPU。</p>
+        <p className="text-xs text-amber-700 dark:text-amber-300">{tt('未检测到可用 GPU，可能已回退到 CPU。', 'No available GPU detected. The app may have fallen back to CPU.')}</p>
       ) : null}
 
       {error ? (
         <div className="rounded-md border border-red-300/60 dark:border-red-500/40 bg-red-50/80 dark:bg-red-900/20 p-2">
           <p className="flex items-center gap-1 text-xs text-red-700 dark:text-red-300">
             <Cpu className="h-3.5 w-3.5" />
-            检测失败：{error}
+            {tt('检测失败', 'Detection failed')}: {error}
           </p>
         </div>
       ) : null}

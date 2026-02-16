@@ -1,8 +1,12 @@
 import { Minus, Square, X } from 'lucide-react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { closeAppWindow } from '@/lib/window-close'
+import { t } from '@/lib/i18n'
+import { useSettingsStore } from '@/stores/settings.store'
 
 export function TitleBar(): React.JSX.Element {
   const appWindow = getCurrentWindow()
+  const language = useSettingsStore((state) => state.language)
 
   const runWindowCommand = async (command: () => Promise<unknown>): Promise<void> => {
     try {
@@ -29,7 +33,7 @@ export function TitleBar(): React.JSX.Element {
           type="button"
           className="group flex w-12 items-center justify-center transition-colors hover:bg-zinc-200 dark:hover:bg-zinc-800"
           onClick={() => void runWindowCommand(() => appWindow.minimize())}
-          aria-label="最小化"
+          aria-label={t(language, '最小化', 'Minimize')}
         >
           <Minus className="h-4 w-4 text-zinc-500 group-hover:text-zinc-900 dark:text-zinc-400 dark:group-hover:text-zinc-100" />
         </button>
@@ -37,15 +41,15 @@ export function TitleBar(): React.JSX.Element {
           type="button"
           className="group flex w-12 items-center justify-center transition-colors hover:bg-zinc-200 dark:hover:bg-zinc-800"
           onClick={() => void runWindowCommand(() => appWindow.toggleMaximize())}
-          aria-label="最大化"
+          aria-label={t(language, '最大化', 'Maximize')}
         >
           <Square className="h-3.5 w-3.5 text-zinc-500 group-hover:text-zinc-900 dark:text-zinc-400 dark:group-hover:text-zinc-100" />
         </button>
         <button
           type="button"
           className="group flex w-12 items-center justify-center transition-colors hover:bg-red-500"
-          onClick={() => void runWindowCommand(() => appWindow.close())}
-          aria-label="关闭"
+          onClick={() => void runWindowCommand(closeAppWindow)}
+          aria-label={t(language, '关闭', 'Close')}
         >
           <X className="h-4 w-4 text-zinc-500 group-hover:text-white dark:text-zinc-400" />
         </button>

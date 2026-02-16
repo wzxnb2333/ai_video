@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "AI Video Processing Assistant"
 authors = ["you"]
 edition = "2021"
+license = "GPL-3.0-or-later"
 
 [lib]
 name = "ai_video_lib"

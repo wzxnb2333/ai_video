@@ -1,5 +1,6 @@
-﻿import { ImageUpscale, Sparkles } from 'lucide-react'
+import { ImageUpscale, Sparkles } from 'lucide-react'
 
+import { GpuCheckPanel } from '@/components/settings/gpu-check-panel'
 import {
   Card,
   CardContent,
@@ -17,21 +18,23 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
-import { GpuCheckPanel } from '@/components/settings/gpu-check-panel'
-import { UPSCALE_MODELS } from '@/types/models'
+import { t } from '@/lib/i18n'
 import { useSettingsStore } from '@/stores/settings.store'
+import { UPSCALE_MODELS } from '@/types/models'
 
 const UPSCALE_PERFORMANCE_PRESETS = [
-  { id: 'preset-484', label: '高性能 4:8:4 + Tile 320', tileSize: 320, threadSpec: '4:8:4' },
-  { id: 'preset-464', label: '均衡 4:6:4 + Tile 256', tileSize: 256, threadSpec: '4:6:4' },
-  { id: 'preset-343', label: '稳定 3:4:3 + Tile 192', tileSize: 192, threadSpec: '3:4:3' },
-  { id: 'preset-auto', label: '自动（按显存）', tileSize: 0, threadSpec: '' },
+  { id: 'preset-484', labelZh: '高性能 4:8:4 + Tile 320', labelEn: 'High performance 4:8:4 + Tile 320', tileSize: 320, threadSpec: '4:8:4' },
+  { id: 'preset-464', labelZh: '均衡 4:6:4 + Tile 256', labelEn: 'Balanced 4:6:4 + Tile 256', tileSize: 256, threadSpec: '4:6:4' },
+  { id: 'preset-343', labelZh: '稳定 3:4:3 + Tile 192', labelEn: 'Stable 3:4:3 + Tile 192', tileSize: 192, threadSpec: '3:4:3' },
+  { id: 'preset-auto', labelZh: '自动（按显存）', labelEn: 'Auto (by VRAM)', tileSize: 0, threadSpec: '' },
 ] as const
 
 export function UpscaleParamsPanel(): React.JSX.Element {
+  const language = useSettingsStore((state) => state.language)
+  const tt = (zh: string, en: string): string => t(language, zh, en)
   const params = useSettingsStore((state) => state.upscaleParams)
   const setUpscaleParams = useSettingsStore((state) => state.setUpscaleParams)
-  const availableScales: Array<2 | 3 | 4> = [2, 3, 4]
+  const availableScales: Array<2 | 4> = [2, 4]
 
   const selectedModel = UPSCALE_MODELS.find((model) => model.name === params.model) ?? UPSCALE_MODELS[0]
   const selectedPresetId = UPSCALE_PERFORMANCE_PRESETS.find((preset) => (
@@ -43,15 +46,15 @@ export function UpscaleParamsPanel(): React.JSX.Element {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-zinc-900 dark:text-zinc-100">
           <ImageUpscale className="h-5 w-5 text-cyan-300" />
-          超分辨率参数
+          {tt('超分辨率参数', 'Upscale Parameters')}
         </CardTitle>
         <CardDescription className="text-zinc-950 dark:text-zinc-400">
-          调整放大质量、速度与输出格式。
+          {tt('调整放大质量、速度与输出格式。', 'Tune quality, speed, and output format.')}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="space-y-2">
-          <Label>模型</Label>
+          <Label>{tt('模型', 'Model')}</Label>
           <Select
             value={params.model}
             onValueChange={(value) => {
@@ -59,7 +62,7 @@ export function UpscaleParamsPanel(): React.JSX.Element {
               if (!model) {
                 return
               }
-              const fallbackScale = model.supportedScales[0] as 2 | 3 | 4
+              const fallbackScale = model.supportedScales[0] as 2 | 4
               setUpscaleParams({
                 model: model.name,
                 scale: model.supportedScales.includes(params.scale) ? params.scale : fallbackScale,
@@ -84,11 +87,11 @@ export function UpscaleParamsPanel(): React.JSX.Element {
         </div>
 
         <div className="space-y-2">
-          <Label>放大倍率</Label>
+          <Label>{tt('放大倍率', 'Scale')}</Label>
           <Select
             value={String(params.scale)}
             onValueChange={(value) => {
-              setUpscaleParams({ scale: Number(value) as 2 | 3 | 4 })
+              setUpscaleParams({ scale: Number(value) as 2 | 4 })
             }}
           >
             <SelectTrigger className="border-zinc-300 bg-zinc-50 text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100">
@@ -107,7 +110,7 @@ export function UpscaleParamsPanel(): React.JSX.Element {
         </div>
 
         <div className="space-y-3">
-          <Label>降噪等级: {params.denoiseLevel}</Label>
+          <Label>{tt('降噪等级', 'Denoise level')}: {params.denoiseLevel}</Label>
           <Slider
             value={[params.denoiseLevel]}
             min={0}
@@ -124,7 +127,7 @@ export function UpscaleParamsPanel(): React.JSX.Element {
         </div>
 
         <div className="space-y-2">
-          <Label>超分性能预设（Tile + 线程）</Label>
+          <Label>{tt('超分性能预设（Tile + 线程）', 'Upscale performance preset (Tile + Threads)')}</Label>
           <Select
             value={selectedPresetId}
             onValueChange={(value) => {
@@ -144,17 +147,17 @@ export function UpscaleParamsPanel(): React.JSX.Element {
             <SelectContent>
               {UPSCALE_PERFORMANCE_PRESETS.map((preset) => (
                 <SelectItem key={preset.id} value={preset.id}>
-                  {preset.label}
+                  {tt(preset.labelZh, preset.labelEn)}
                 </SelectItem>
               ))}
-              <SelectItem value="preset-custom">自定义（保持当前）</SelectItem>
+              <SelectItem value="preset-custom">{tt('自定义（保持当前）', 'Custom (keep current)')}</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="tile-size">切片大小（0 为自动）</Label>
+            <Label htmlFor="tile-size">{tt('切片大小（0 为自动）', 'Tile size (0 = auto)')}</Label>
             <Input
               id="tile-size"
               type="number"
@@ -167,7 +170,7 @@ export function UpscaleParamsPanel(): React.JSX.Element {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="upscale-gpu">GPU 编号（-1 为自动）</Label>
+            <Label htmlFor="upscale-gpu">{tt('GPU 编号（-1 为自动）', 'GPU index (-1 = auto)')}</Label>
             <Input
               id="upscale-gpu"
               type="number"
@@ -183,26 +186,29 @@ export function UpscaleParamsPanel(): React.JSX.Element {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="upscale-thread-spec">超分线程参数（留空自动）</Label>
+          <Label htmlFor="upscale-thread-spec">{tt('超分线程参数（留空自动）', 'Upscale thread spec (empty = auto)')}</Label>
           <Input
             id="upscale-thread-spec"
             type="text"
             value={params.threadSpec}
-            placeholder="示例: 4:8:4"
+            placeholder={tt('示例: 4:8:4', 'Example: 4:8:4')}
             className="border-zinc-300 bg-zinc-50 text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
             onChange={(event) => {
               setUpscaleParams({ threadSpec: event.target.value })
             }}
           />
           <p className="text-xs text-zinc-600 dark:text-zinc-400">
-            对应 waifu2x 的 -j load:proc:save。你这台机器建议优先使用 4:8:4。
+            {tt(
+              '对应 waifu2x 的 -j load:proc:save。你这台机器建议优先使用 4:8:4。',
+              'Maps to waifu2x -j load:proc:save. On your machine, prefer 4:8:4 first.',
+            )}
           </p>
         </div>
 
         <GpuCheckPanel />
 
         <div className="space-y-2">
-          <Label>输出格式</Label>
+          <Label>{tt('输出格式', 'Output format')}</Label>
           <Select
             value={params.format}
             onValueChange={(value) => {

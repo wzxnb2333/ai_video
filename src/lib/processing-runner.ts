@@ -28,7 +28,15 @@ const pickNextTask = (tasks: ProcessingTask[]): ProcessingTask | null => {
   return pending ?? null
 }
 
-const updateTaskProgress = (taskId: string, progress: number, currentFrame: number, totalFrames: number, eta: number): void => {
+const updateTaskProgress = (
+  taskId: string,
+  progress: number,
+  currentFrame: number,
+  totalFrames: number,
+  eta: number,
+  stage: 'extract' | 'process' | 'encode' | 'done',
+  stageMessage: string,
+): void => {
   const state = useProcessingStore.getState()
   const task = state.tasks.find((item) => item.id === taskId)
   if (!task || task.status !== 'processing') {
@@ -40,6 +48,8 @@ const updateTaskProgress = (taskId: string, progress: number, currentFrame: numb
     currentFrame,
     totalFrames,
     eta,
+    stage,
+    stageMessage,
   })
 }
 
@@ -56,6 +66,8 @@ const processTask = async (task: ProcessingTask): Promise<void> => {
       eta: 0,
       currentFrame: 0,
       totalFrames: 0,
+      stage: 'extract',
+      stageMessage: '准备处理',
       error: null,
     })
   }
@@ -77,6 +89,8 @@ const processTask = async (task: ProcessingTask): Promise<void> => {
       status: 'completed',
       progress: 100,
       eta: 0,
+      stage: 'done',
+      stageMessage: '处理完成',
       endTime: Date.now(),
       error: null,
     })
@@ -89,6 +103,8 @@ const processTask = async (task: ProcessingTask): Promise<void> => {
         status: 'cancelled',
         endTime: Date.now(),
         eta: 0,
+        stage: null,
+        stageMessage: '已取消',
       })
       return
     }
@@ -96,6 +112,8 @@ const processTask = async (task: ProcessingTask): Promise<void> => {
     finalState.updateTask(task.id, {
       status: 'error',
       endTime: Date.now(),
+      stage: null,
+      stageMessage: '处理失败',
       error: error instanceof Error ? error.message : String(error),
     })
   } finally {
@@ -137,6 +155,8 @@ export const ensureProcessingRunner = (): void => {
       progress.currentFrame,
       progress.totalFrames,
       progress.eta,
+      progress.stage,
+      progress.message,
     )
   })
 
@@ -165,5 +185,34 @@ export const cancelProcessingTask = async (taskId: string): Promise<void> => {
 
   if (currentTaskId === taskId) {
     await pipeline.cancel()
+  }
+}
+
+export const cancelAllProcessingTasks = (): void => {
+  const state = useProcessingStore.getState()
+  const cancellableTasks = state.tasks.filter(
+    (task) => task.status === 'processing' || task.status === 'pending',
+  )
+
+  if (cancellableTasks.length === 0) {
+    return
+  }
+
+  const now = Date.now()
+  for (const task of cancellableTasks) {
+    state.updateTask(task.id, {
+      status: 'cancelled',
+      endTime: now,
+      eta: 0,
+      error: null,
+      stage: null,
+      stageMessage: '已取消',
+    })
+  }
+
+  if (currentTaskId) {
+    void pipeline.cancel().catch((error) => {
+      console.error('[processing-runner] failed to cancel active pipeline:', error)
+    })
   }
 }

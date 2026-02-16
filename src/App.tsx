@@ -6,6 +6,7 @@ import { InterpolatePage } from '@/pages/interpolate'
 import { QueuePage } from '@/pages/queue'
 import { SettingsPage } from '@/pages/settings-page'
 import { UpscalePage } from '@/pages/upscale'
+import { WorkflowPage } from '@/pages/workflow'
 
 const router = createBrowserRouter([
   {
@@ -23,6 +24,10 @@ const router = createBrowserRouter([
       {
         path: 'interpolate',
         element: <InterpolatePage />,
+      },
+      {
+        path: 'workflow',
+        element: <WorkflowPage />,
       },
       {
         path: 'queue',

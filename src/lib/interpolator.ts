@@ -54,15 +54,6 @@ function parseProgressLine(line: string): { current: number; total: number } | n
     return { current: percentage, total: 100 }
   }
 
-  const frameMatch = line.match(/(\d+)\s*\/\s*(\d+)/)
-  if (frameMatch) {
-    const current = Number(frameMatch[1])
-    const total = Number(frameMatch[2])
-    if (Number.isFinite(current) && Number.isFinite(total) && total > 0) {
-      return { current: Math.min(current, total), total }
-    }
-  }
-
   return null
 }
 
@@ -94,6 +85,11 @@ async function resolveModelDirectory(modelName: string): Promise<string> {
 
 async function countInputFrames(inputDir: string): Promise<number> {
   const entries = await readDir(inputDir)
+  return entries.filter((entry) => entry.isFile && /\.(png|jpg|jpeg|webp)$/i.test(entry.name)).length
+}
+
+async function countOutputFrames(outputDir: string): Promise<number> {
+  const entries = await readDir(outputDir)
   return entries.filter((entry) => entry.isFile && /\.(png|jpg|jpeg|webp)$/i.test(entry.name)).length
 }
 
@@ -148,13 +144,18 @@ export async function runInterpolate(
   const command = Command.create(commandName, args)
 
   const expectedTotal = targetFrames > 0 ? targetFrames : 100
+  let lastReported = 0
 
   command.stdout.on('data', (line) => {
     const parsed = parseProgressLine(line)
     if (parsed && onProgress) {
       const normalizedCurrent = parsed.total === 100 ? Math.round((parsed.current / 100) * expectedTotal) : parsed.current
       const normalizedTotal = parsed.total === 100 ? expectedTotal : parsed.total
-      onProgress(Math.min(normalizedCurrent, normalizedTotal), normalizedTotal)
+      const boundedCurrent = Math.min(normalizedCurrent, normalizedTotal)
+      if (boundedCurrent > lastReported) {
+        lastReported = boundedCurrent
+        onProgress(boundedCurrent, normalizedTotal)
+      }
     }
   })
 
@@ -163,11 +164,30 @@ export async function runInterpolate(
     if (parsed && onProgress) {
       const normalizedCurrent = parsed.total === 100 ? Math.round((parsed.current / 100) * expectedTotal) : parsed.current
       const normalizedTotal = parsed.total === 100 ? expectedTotal : parsed.total
-      onProgress(Math.min(normalizedCurrent, normalizedTotal), normalizedTotal)
+      const boundedCurrent = Math.min(normalizedCurrent, normalizedTotal)
+      if (boundedCurrent > lastReported) {
+        lastReported = boundedCurrent
+        onProgress(boundedCurrent, normalizedTotal)
+      }
     }
   })
 
   activeInterpolateChild = await command.spawn()
+  const pollInterval = setInterval(() => {
+    if (!onProgress) {
+      return
+    }
+
+    void countOutputFrames(outputDir)
+      .then((count) => {
+        const boundedCount = Math.min(count, expectedTotal)
+        if (boundedCount > lastReported) {
+          lastReported = boundedCount
+          onProgress(boundedCount, expectedTotal)
+        }
+      })
+      .catch(() => undefined)
+  }, 1200)
 
   const result = await new Promise<{ code: number | null; stderr: string }>((resolveResult, rejectResult) => {
     const stderrParts: string[] = []
@@ -186,12 +206,14 @@ export async function runInterpolate(
   })
 
   activeInterpolateChild = null
+  clearInterval(pollInterval)
 
   if (result.code !== 0) {
     throw new Error(result.stderr || `rife-ncnn-vulkan failed with code ${String(result.code)}`)
   }
 
   if (onProgress) {
+    lastReported = expectedTotal
     onProgress(expectedTotal, expectedTotal)
   }
 }
